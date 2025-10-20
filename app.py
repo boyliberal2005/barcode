@@ -135,7 +135,6 @@ with st.sidebar:
         help="Tên của Google Sheet bạn muốn lưu dữ liệu"
     )
     st.markdown("---")
-        """)
 
 # Main content
 try:
