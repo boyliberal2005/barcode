@@ -138,16 +138,16 @@ with st.sidebar:
     st.subheader("📖 Hướng dẫn")
     with st.expander("Cách thiết lập Google Sheets"):
         st.markdown("""
-        **Bước 1:** Tạo Google Cloud Project
-        1. Vào [Google Cloud Console](https://console.cloud.google.com/)
-        2. Tạo project mới
-        3. Enable Google Sheets API và Google Drive API
-        
-        **Bước 2:** Tạo Service Account
-        1. Vào IAM & Admin → Service Accounts
-        2. Tạo service account mới
-        3. Tạo key (JSON) và tải về
-        4. Share Google Sheet với email từ service account
+            **Bước 1:** Tạo Google Cloud Project
+            1. Vào [Google Cloud Console](https://console.cloud.google.com/)
+            2. Tạo project mới
+            3. Enable Google Sheets API và Google Drive API
+            
+            **Bước 2:** Tạo Service Account
+            1. Vào IAM & Admin → Service Accounts
+            2. Tạo service account mới
+            3. Tạo key (JSON) và tải về
+            4. Share Google Sheet với email từ service account
         """)
 
 # Main content
@@ -291,12 +291,12 @@ with tab2:
 with tab3:
     st.subheader("📖 Hướng dẫn sử dụng")
     st.markdown("""
-    ### 🚀 Bắt đầu nhanh
-    **Bước 1:** Thiết lập Google Sheets API
-    1. Làm theo hướng dẫn trong sidebar
-    2. Đặt credentials trong Streamlit secrets (cho Cloud) hoặc file credentials.json (local)
-    3. Tạo Google Sheet với header: Barcode | Tên SP | Thương hiệu | Số lượng | Đơn vị | Thời gian
-    
-    **Bước 2:** Chạy ứng dụng
-    ```bash
-    streamlit run app.py
+        ### 🚀 Bắt đầu nhanh
+        **Bước 1:** Thiết lập Google Sheets API
+        1. Làm theo hướng dẫn trong sidebar
+        2. Đặt credentials trong Streamlit secrets (cho Cloud) hoặc file credentials.json (local)
+        3. Tạo Google Sheet với header: Barcode | Tên SP | Thương hiệu | Số lượng | Đơn vị | Thời gian
+        
+        **Bước 2:** Chạy ứng dụng
+        ```bash
+        streamlit run app.py
