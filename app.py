@@ -297,4 +297,4 @@ with tab3:
     - Cần cài libzbar0, libgl1, libglib2.0-0 trên hệ thống
     - Chụp ảnh barcode rõ nét, đủ sáng
     """)
-        streamlit run app.py
+streamlit run app.py
