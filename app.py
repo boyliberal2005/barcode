@@ -1,3 +1,4 @@
+```python
 import streamlit as st
 from pyzbar import pyzbar
 import cv2
@@ -10,7 +11,7 @@ import pandas as pd
 import pytz
 import google.generativeai as genai
 import io
-import base64  # Để mã hóa trạng thái đăng nhập đơn giản
+import base64
 
 # Cấu hình Gemini API
 genai.configure(api_key="AIzaSyA52qNG0pm7JD9E5Jhp_GhcwjdgXJd8sXQ")
@@ -76,19 +77,17 @@ def check_login(username, password):
     """Kiểm tra thông tin đăng nhập"""
     return username == HARDCODED_USER and password == HARDCODED_PASS
 
-# Hàm lưu trạng thái đăng nhập vào query params (để lưu sau refresh)
+# Hàm lưu trạng thái đăng nhập vào query params
 def set_logged_in():
-    params = st.experimental_get_query_params()
-    params['logged_in'] = [base64.b64encode(b"true").decode("utf-8")]
-    st.experimental_set_query_params(**params)
+    st.query_params.set({"logged_in": base64.b64encode(b"true").decode("utf-8")})
     st.session_state.logged_in = True
 
 # Hàm kiểm tra trạng thái đăng nhập từ query params
 def is_logged_in():
-    params = st.experimental_get_query_params()
-    if 'logged_in' in params:
+    logged_in_param = st.query_params.get("logged_in")
+    if logged_in_param:
         try:
-            decoded = base64.b64decode(params['logged_in'][0]).decode("utf-8")
+            decoded = base64.b64decode(logged_in_param).decode("utf-8")
             return decoded == "true"
         except:
             return False
@@ -96,10 +95,7 @@ def is_logged_in():
 
 # Hàm logout và xóa query params
 def logout():
-    params = st.experimental_get_query_params()
-    if 'logged_in' in params:
-        del params['logged_in']
-    st.experimental_set_query_params(**params)
+    st.query_params.clear()
     st.session_state.logged_in = False
     st.session_state.scanned_product = None
     st.session_state.barcode_data = None
@@ -287,7 +283,7 @@ if not st.session_state.logged_in:
         
         if submit_button:
             if check_login(username, password):
-                st.session_state.logged_in = True
+                set_logged_in()
                 st.success("✅ Đăng nhập thành công!")
                 st.balloons()
                 st.rerun()
@@ -458,12 +454,14 @@ else:
                     "Số lượng:",
                     min_value=0.0,
                     step=0.1,
-                    format="%.2f"
+                    format="%.2f",
+                    value=0.0  # Reset mặc định
                 )
             with col2:
                 unit = st.selectbox(
                     "Đơn vị:",
-                    ["ml", "L", "g", "kg", "cái", "hộp", "chai"]
+                    ["ml", "L", "g", "kg", "cái", "hộp", "chai"],
+                    index=0  # Reset về giá trị đầu tiên
                 )
             st.markdown("---")
             col1, col2 = st.columns(2)
@@ -493,7 +491,7 @@ else:
                                 st.session_state.scanned_product = None
                                 st.session_state.barcode_data = None
                                 st.session_state.temp_barcode = None
-                                st.rerun()  # Làm mới app để reset form
+                                st.rerun()
                             else:
                                 st.error("❌ Gửi dữ liệu thất bại!")
                         else:
@@ -522,7 +520,8 @@ else:
                         df = pd.DataFrame(data)
                         if 'Thời gian' in df.columns:
                             # Chuyển cột Thời gian thành datetime
-                            df['Thời gian'] = pd.to_datetime(df['Thời gian'], format='%Y-%m-%d %H:%M:%S')
+                            df['Thời gian'] = pd.to_datetime(df['Thời gian'], format='%Y-%m-%d %H:%M:%S', errors='coerce')
+                            df = df.dropna(subset=['Thời gian'])
                             # Lọc theo khoảng thời gian
                             mask = (df['Thời gian'].dt.date >= start_date) & (df['Thời gian'].dt.date <= end_date)
                             filtered_df = df[mask]
