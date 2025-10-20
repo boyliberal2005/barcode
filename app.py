@@ -8,6 +8,11 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 import pandas as pd
 import pytz
+import google.generativeai as genai
+import io
+
+# Cấu hình Gemini API
+genai.configure(api_key=st.secrets.get("GEMINI_API_KEY", "your-local-api-key-for-testing"))
 
 # Cấu hình trang
 st.set_page_config(
@@ -78,11 +83,10 @@ def connect_google_sheet(sheet_name):
         st.error(f"Lỗi kết nối Google Sheets: {e}")
         return None
 
-# Hàm quét barcode từ ảnh
-def scan_barcode(image):
-    """Quét barcode từ ảnh với tiền xử lý nâng cao"""
+# Hàm quét barcode bằng pyzbar và OpenCV
+def scan_barcode_pyzbar(image):
+    """Quét barcode bằng pyzbar với tiền xử lý nâng cao"""
     try:
-        # Chuyển ảnh thành mảng numpy
         img_array = np.array(image)
         if len(img_array.shape) == 3:
             gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
@@ -106,7 +110,7 @@ def scan_barcode(image):
             # Chọn contour lớn nhất (giả định là vùng barcode)
             largest_contour = max(contours, key=cv2.contourArea)
             x, y, w, h = cv2.boundingRect(largest_contour)
-            # Cắt vùng barcode để tập trung xử lý
+            # Cắt vùng barcode
             roi = gray[y:y+h, x:x+w]
             if roi.size == 0:
                 roi = gray  # Fallback về ảnh gốc nếu cắt thất bại
@@ -123,8 +127,43 @@ def scan_barcode(image):
             return barcodes[0].data.decode('utf-8')
         return None
     except Exception as e:
-        st.error(f"Lỗi khi quét barcode: {e}")
+        st.error(f"Lỗi pyzbar: {e}")
         return None
+
+# Hàm quét barcode bằng Gemini AI
+def scan_barcode_gemini(image):
+    """Quét barcode bằng Gemini AI"""
+    try:
+        # Chuyển PIL Image thành bytes cho API
+        img_bytes = io.BytesIO()
+        image.save(img_bytes, format='PNG')
+        img_bytes = img_bytes.getvalue()
+
+        # Prompt cho Gemini
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content([
+            "Detect and read the barcode in this image. Return only the barcode value as plain text (e.g., '8935049502142'). If no barcode, return 'None'.",
+            {"mime_type": "image/png", "data": img_bytes}
+        ])
+        
+        barcode_text = response.text.strip()
+        if barcode_text.lower() != 'none':
+            return barcode_text
+        return None
+    except Exception as e:
+        st.error(f"Lỗi Gemini AI: {e}")
+        return None
+
+# Hàm quét barcode chính (kết hợp pyzbar + Gemini fallback)
+def scan_barcode(image):
+    """Quét barcode: pyzbar trước, Gemini fallback nếu cần"""
+    pyzbar_result = scan_barcode_pyzbar(image)
+    if pyzbar_result:
+        return pyzbar_result
+    
+    # Fallback đến Gemini nếu pyzbar thất bại
+    st.info("Đang sử dụng AI Gemini để quét barcode thông minh hơn...")
+    return scan_barcode_gemini(image)
 
 # Hàm tra cứu sản phẩm
 def lookup_product(barcode):
