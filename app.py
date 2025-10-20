@@ -8,6 +8,9 @@ import pytz
 import io
 import base64
 
+# Múi giờ Việt Nam
+VN_TZ = pytz.timezone('Asia/Ho_Chi_Minh')
+
 # Cấu hình trang
 st.set_page_config(
     page_title="Quét Barcode",
@@ -324,7 +327,7 @@ with tab1:
                             'brand': st.session_state.scanned_product['brand'],
                             'quantity': qty,
                             'unit': unit,
-                            'timestamp': datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).strftime("%Y-%m-%d %H:%M:%S")
+                            'timestamp': datetime.now(VN_TZ).strftime("%Y-%m-%d %H:%M:%S")
                         }
                         
                         with st.spinner("Đang gửi..."):
@@ -341,8 +344,8 @@ with tab1:
 with tab2:
     st.subheader("📊 Dữ liệu đã lưu")
     
-    # Luôn mặc định là ngày hiện tại
-    today = date.today()
+    # Luôn mặc định là ngày hiện tại (theo giờ Việt Nam)
+    today = datetime.now(VN_TZ).date()
     
     col1, col2 = st.columns(2)
     with col1:
