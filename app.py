@@ -124,7 +124,7 @@ def scan_barcode_gemini(image):
     try:
         import google.generativeai as genai
         
-        genai.configure(api_key=st.secrets.get("GEMINI_API_KEY", "your-local-api-key-for-testing"))
+        genai.configure(api_key="AIzaSyA52qNG0pm7JD9E5Jhp_GhcwjdgXJd8sXQ")
         img_bytes = io.BytesIO()
         image.save(img_bytes, format='PNG')
         img_bytes = img_bytes.getvalue()
@@ -153,9 +153,6 @@ def scan_barcode(image):
 
 def lookup_product_fast(barcode, df):
     """Tra cứu nhanh từ DataFrame đã cache"""
-    if df.empty:
-        return {'name': 'Sản phẩm không xác định', 'brand': 'N/A'}
-    
     barcode = str(barcode).strip()
     match = df[df['Barcode'] == barcode]
     if not match.empty:
