@@ -48,6 +48,13 @@ st.markdown("""
         border: 1px solid #f5c6cb;
         color: #721c24;
     }
+    .warning-box {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        background-color: #fff3cd;
+        border: 1px solid #ffeeba;
+        color: #856404;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -76,23 +83,30 @@ def connect_google_sheet(sheet_name, worksheet_name):
         else:
             creds = Credentials.from_service_account_file('credentials.json', scopes=scope)
         client = gspread.authorize(creds)
-        spreadsheet = client.open(sheet_name)
         
-        # Kiểm tra worksheet tồn tại
+        # Mở spreadsheet
+        try:
+            spreadsheet = client.open(sheet_name)
+        except gspread.exceptions.SpreadsheetNotFound:
+            st.error(f"Sheet '{sheet_name}' không tồn tại. Đang tạo sheet mới...")
+            spreadsheet = client.create(sheet_name)
+            spreadsheet.share(
+                st.secrets["gcp_service_account"]["client_email"],
+                perm_type='user',
+                role='writer'
+            )
+        
+        # Kiểm tra và tạo worksheet
         try:
             sheet = spreadsheet.worksheet(worksheet_name)
         except gspread.exceptions.WorksheetNotFound:
             st.warning(f"Worksheet '{worksheet_name}' không tồn tại. Đang tạo mới...")
             sheet = spreadsheet.add_worksheet(title=worksheet_name, rows=100, cols=10)
-            # Thêm header tùy theo worksheet
             if worksheet_name == "Barcode_Data":
                 sheet.append_row(["Barcode", "Tên SP", "Thương hiệu", "Số lượng", "Đơn vị", "Thời gian"])
             elif worksheet_name == "Product_List":
                 sheet.append_row(["Barcode", "Tên SP", "Thương hiệu"])
         return sheet
-    except gspread.exceptions.SpreadsheetNotFound:
-        st.error(f"Sheet '{sheet_name}' không tồn tại. Vui lòng tạo sheet với tên chính xác!")
-        return None
     except Exception as e:
         st.error(f"Lỗi kết nối Google Sheets ({worksheet_name}): {e}")
         return None
@@ -239,12 +253,14 @@ with st.sidebar:
             1. Vào IAM & Admin → Service Accounts
             2. Tạo service account mới
             3. Tạo key (JSON) và tải về
-            4. Share Google Sheet với email từ service account
+            4. Share Google Sheet với email từ service account (Editor)
             
             **Bước 3:** Cấu hình Sheet
             - Tạo sheet "Barcode_Data" với hai worksheet:
               - "Barcode_Data": Header: Barcode, Tên SP, Thương hiệu, Số lượng, Đơn vị, Thời gian
               - "Product_List": Header: Barcode, Tên SP, Thương hiệu
+            - Dữ liệu mẫu cho Product_List:
+              - 8935049502142 | Coca Cola 330ml | Coca Cola
         """)
 
 # Main content
@@ -283,6 +299,12 @@ with tab1:
                 if product_sheet:
                     st.session_state.scanned_product = lookup_product(barcode, product_sheet)
                     st.success(f"✅ Đã quét được barcode: {barcode}")
+                    if st.session_state.scanned_product['name'] == 'Sản phẩm không xác định':
+                        st.markdown(
+                            f'<div class="warning-box">⚠️ Barcode <b>{barcode}</b> chưa có trong Product_List. '
+                            'Vui lòng thêm sản phẩm trong tab "Cập nhật Barcode".</div>',
+                            unsafe_allow_html=True
+                        )
                 else:
                     st.error("❌ Lỗi kết nối sheet Product_List!")
             else:
@@ -305,6 +327,12 @@ with tab1:
                 if product_sheet:
                     st.session_state.scanned_product = lookup_product(barcode, product_sheet)
                     st.success(f"✅ Đã quét được barcode: {barcode}")
+                    if st.session_state.scanned_product['name'] == 'Sản phẩm không xác định':
+                        st.markdown(
+                            f'<div class="warning-box">⚠️ Barcode <b>{barcode}</b> chưa có trong Product_List. '
+                            'Vui lòng thêm sản phẩm trong tab "Cập nhật Barcode".</div>',
+                            unsafe_allow_html=True
+                        )
                 else:
                     st.error("❌ Lỗi kết nối sheet Product_List!")
             else:
@@ -319,12 +347,18 @@ with tab1:
                 if product_sheet:
                     st.session_state.scanned_product = lookup_product(manual_barcode, product_sheet)
                     st.success(f"✅ Đã tra cứu barcode: {manual_barcode}")
+                    if st.session_state.scanned_product['name'] == 'Sản phẩm không xác định':
+                        st.markdown(
+                            f'<div class="warning-box">⚠️ Barcode <b>{manual_barcode}</b> chưa có trong Product_List. '
+                            'Vui lòng thêm sản phẩm trong tab "Cập nhật Barcode".</div>',
+                            unsafe_allow_html=True
+                        )
                 else:
                     st.error("❌ Lỗi kết nối sheet Product_List!")
             else:
                 st.warning("⚠️ Vui lòng nhập mã barcode!")
 
-    if st.session_state.scanned_product:
+    if st.session_state.scanned_product and st.session_state.scanned_product['name'] != 'Sản phẩm không xác định':
         st.markdown("---")
         st.subheader("📦 Thông tin sản phẩm")
         col1, col2 = st.columns(2)
@@ -407,7 +441,7 @@ with tab2:
 
 with tab3:
     st.subheader("🛠 Cập nhật Barcode")
-    st.markdown("Nhập thông tin để thêm hoặc cập nhật sản phẩm.")
+    st.markdown("Nhập thông tin để thêm hoặc cập nhật sản phẩm vào Product_List.")
     barcode_input = st.text_input("Mã Barcode", max_chars=20)
     product_name = st.text_input("Tên sản phẩm")
     brand = st.text_input("Thương hiệu")
@@ -431,3 +465,5 @@ st.markdown(
     "<div style='text-align: center; color: #666;'>Made with ❤️ using Streamlit</div>",
     unsafe_allow_html=True
 )
+
+Nếu lỗi vẫn xảy ra, hãy chia sẻ log chi tiết hoặc ảnh chụp lỗi. Bạn muốn thêm tính năng xóa sản phẩm trong “Product_List” hoặc tích hợp Google Cloud Vision API để thay Gemini không?
