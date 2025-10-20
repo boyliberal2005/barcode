@@ -1,4 +1,3 @@
-```python
      import streamlit as st
      from pyzbar import pyzbar
      import cv2
