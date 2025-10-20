@@ -140,7 +140,7 @@ def scan_barcode_gemini(image):
         img_bytes = img_bytes.getvalue()
 
         # Prompt cho Gemini
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         response = model.generate_content([
             "Detect and read the barcode in this image. Return only the barcode value as plain text (e.g., '8935049502142'). If no barcode, return 'None'.",
             {"mime_type": "image/png", "data": img_bytes}
