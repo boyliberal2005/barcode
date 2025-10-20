@@ -289,8 +289,5 @@ with tab2:
                 st.error(f"Lỗi tải dữ liệu: {e}")
 
 # Footer
-     st.markdown("---")
-     st.markdown(
-         "<div style='text-align: center; color: #666;'>Dũng Phạm</div>",
-         unsafe_allow_html=True
-     )
+st.markdown("---")
+st.markdown("<div style='text-align: center; color: #666;'>Dũng Phạm</div>",unsafe_allow_html=True)
