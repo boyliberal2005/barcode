@@ -57,12 +57,20 @@ st.title("📦 Quét Barcode Sản Phẩm")
 st.markdown("---")
 
 # Hàm kết nối Google Sheets
-def connect_google_sheet(credentials_file, sheet_name):
+def connect_google_sheet(sheet_name):
     """Kết nối với Google Sheets"""
     try:
         scope = ['https://spreadsheets.google.com/feeds',
                  'https://www.googleapis.com/auth/drive']
-        creds = ServiceAccountCredentials.from_json_keyfile_name(credentials_file, scope)
+        
+        # Đọc credentials từ Streamlit secrets (cho Streamlit Cloud)
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        else:
+            # Fallback: đọc từ file local (cho development)
+            creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+        
         client = gspread.authorize(creds)
         sheet = client.open(sheet_name).sheet1
         return sheet
