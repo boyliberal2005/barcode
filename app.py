@@ -30,6 +30,8 @@ if 'scanned_product' not in st.session_state:
     st.session_state.scanned_product = None
 if 'barcode_data' not in st.session_state:
     st.session_state.barcode_data = None
+if 'last_image_hash' not in st.session_state:
+    st.session_state.last_image_hash = None
 
 # Thông tin đăng nhập
 HARDCODED_USER = "admin@123"
@@ -90,37 +92,16 @@ def get_worksheet(_client, sheet_name, worksheet_name):
         st.error(f"Lỗi worksheet: {e}")
         return None
 
-# ==================== LAZY IMPORT ====================
+# ==================== BARCODE SCANNING (GEMINI ONLY) ====================
 
-def scan_barcode_pyzbar(image):
-    """Lazy import pyzbar và cv2 chỉ khi cần"""
-    try:
-        import cv2
-        import numpy as np
-        from pyzbar import pyzbar
-        
-        img_array = np.array(image)
-        if len(img_array.shape) == 3:
-            gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-        else:
-            gray = img_array
-
-        barcodes = pyzbar.decode(gray)
-        if barcodes:
-            return barcodes[0].data.decode('utf-8')
-        
-        # Thử với tiền xử lý nếu không quét được
-        gray = cv2.GaussianBlur(gray, (5, 5), 0)
-        barcodes = pyzbar.decode(gray)
-        if barcodes:
-            return barcodes[0].data.decode('utf-8')
-        
-        return None
-    except Exception as e:
-        return None
+def get_image_hash(image):
+    """Tạo hash unique cho ảnh để phát hiện ảnh mới"""
+    img_bytes = io.BytesIO()
+    image.save(img_bytes, format='PNG')
+    return hash(img_bytes.getvalue())
 
 def scan_barcode_gemini(image):
-    """Lazy import Gemini chỉ khi pyzbar thất bại"""
+    """Quét barcode bằng Gemini AI"""
     try:
         import google.generativeai as genai
         
@@ -139,15 +120,8 @@ def scan_barcode_gemini(image):
             return barcode_text
         return None
     except Exception as e:
+        st.error(f"Lỗi quét barcode: {e}")
         return None
-
-def scan_barcode(image):
-    """Quét barcode: pyzbar trước, Gemini fallback"""
-    result = scan_barcode_pyzbar(image)
-    if result:
-        return result
-    with st.spinner("Dùng AI để quét..."):
-        return scan_barcode_gemini(image)
 
 # ==================== CORE FUNCTIONS ====================
 
@@ -214,6 +188,7 @@ def logout():
     st.session_state.logged_in = False
     st.session_state.scanned_product = None
     st.session_state.barcode_data = None
+    st.session_state.last_image_hash = None
     st.rerun()
 
 # ==================== MAIN APP ====================
@@ -276,83 +251,102 @@ with tab1:
 
     image = None
     barcode = None
+    should_scan = False
 
     if scan_method == "📷 Chụp ảnh":
         camera_image = st.camera_input("Chụp ảnh barcode")
         if camera_image:
             image = Image.open(camera_image)
+            current_hash = get_image_hash(image)
+            
+            # CHỈ QUÉT NẾU LÀ ẢNH MỚI
+            if current_hash != st.session_state.last_image_hash:
+                st.session_state.last_image_hash = current_hash
+                should_scan = True
+            
             st.image(image, caption="Ảnh đã chụp", use_column_width=True)
-            with st.spinner("Đang quét..."):
-                barcode = scan_barcode(image)
 
     elif scan_method == "📁 Upload ảnh":
         uploaded_file = st.file_uploader("Chọn ảnh", type=['jpg', 'jpeg', 'png'])
         if uploaded_file:
             image = Image.open(uploaded_file)
+            current_hash = get_image_hash(image)
+            
+            # CHỈ QUÉT NẾU LÀ ẢNH MỚI
+            if current_hash != st.session_state.last_image_hash:
+                st.session_state.last_image_hash = current_hash
+                should_scan = True
+            
             st.image(image, caption="Ảnh đã upload", use_column_width=True)
-            with st.spinner("Đang quét..."):
-                barcode = scan_barcode(image)
 
     else:  # Nhập thủ công
         manual_barcode = st.text_input("Nhập mã barcode:", max_chars=20)
         if st.button("🔍 Tra cứu"):
             if manual_barcode:
                 barcode = manual_barcode
+                should_scan = False  # Không cần quét
 
-    # Xử lý barcode vừa quét
-    if barcode:
-        st.session_state.barcode_data = barcode
-        st.session_state.scanned_product = lookup_product_fast(barcode, product_df)
-        st.success(f"✅ Barcode: {barcode}")
+    # Xử lý quét barcode CHỈ KHI CẦN
+    if should_scan and image:
+        with st.spinner("🤖 AI đang quét barcode..."):
+            barcode = scan_barcode_gemini(image)
+            if barcode:
+                st.session_state.barcode_data = barcode
+                st.session_state.scanned_product = lookup_product_fast(barcode, product_df)
+
+    # Hiển thị kết quả quét (nếu đã có từ lần quét trước)
+    if st.session_state.barcode_data and st.session_state.scanned_product:
+        st.success(f"✅ Barcode: {st.session_state.barcode_data}")
         
         if st.session_state.scanned_product['name'] == 'Sản phẩm không xác định':
-            st.warning(f"⚠️ Barcode {barcode} chưa có. Vui lòng thêm trong tab 'Cập nhật Barcode'.")
-
-    # Form nhập liệu nếu đã có sản phẩm
-    if st.session_state.scanned_product and st.session_state.scanned_product['name'] != 'Sản phẩm không xác định':
-        st.markdown("---")
-        st.subheader("📦 Thông tin sản phẩm")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Tên", st.session_state.scanned_product['name'])
-        with col2:
-            st.metric("Thương hiệu", st.session_state.scanned_product['brand'])
-        
-        st.info(f"🔢 Barcode: **{st.session_state.barcode_data}**")
-        
-        st.markdown("---")
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            quantity = st.number_input("Số lượng:", min_value=0.0, step=0.1, format="%.2f")
-        with col2:
-            unit = st.selectbox("Đơn vị:", ["ml", "L", "g", "kg", "cái", "hộp", "chai"])
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🔄 Quét lại", use_container_width=True):
-                st.session_state.scanned_product = None
-                st.session_state.barcode_data = None
-                st.rerun()
-        with col2:
-            if st.button("📤 Gửi", type="primary", use_container_width=True):
-                if quantity > 0:
-                    data = {
-                        'barcode': st.session_state.barcode_data,
-                        'product_name': st.session_state.scanned_product['name'],
-                        'brand': st.session_state.scanned_product['brand'],
-                        'quantity': quantity,
-                        'unit': unit,
-                        'timestamp': datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).strftime("%Y-%m-%d %H:%M:%S")
-                    }
-                    if send_to_sheet(client, sheet_name, data):
-                        st.success("✅ Đã gửi!")
-                        st.balloons()
-                        st.session_state.scanned_product = None
-                        st.session_state.barcode_data = None
-                        st.rerun()
-                else:
-                    st.warning("⚠️ Nhập số lượng > 0!")
+            st.warning(f"⚠️ Barcode {st.session_state.barcode_data} chưa có. Vui lòng thêm trong tab 'Cập nhật Barcode'.")
+        else:
+            # Form nhập liệu
+            st.markdown("---")
+            st.subheader("📦 Thông tin sản phẩm")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Tên", st.session_state.scanned_product['name'])
+            with col2:
+                st.metric("Thương hiệu", st.session_state.scanned_product['brand'])
+            
+            st.info(f"🔢 Barcode: **{st.session_state.barcode_data}**")
+            
+            st.markdown("---")
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                quantity = st.number_input("Số lượng:", min_value=0.0, step=0.1, format="%.2f", key="quantity_input")
+            with col2:
+                unit = st.selectbox("Đơn vị:", ["ml", "L", "g", "kg", "cái", "hộp", "chai"], key="unit_select")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔄 Quét lại", use_container_width=True):
+                    st.session_state.scanned_product = None
+                    st.session_state.barcode_data = None
+                    st.session_state.last_image_hash = None
+                    st.rerun()
+            with col2:
+                if st.button("📤 Gửi", type="primary", use_container_width=True):
+                    if quantity > 0:
+                        data = {
+                            'barcode': st.session_state.barcode_data,
+                            'product_name': st.session_state.scanned_product['name'],
+                            'brand': st.session_state.scanned_product['brand'],
+                            'quantity': quantity,
+                            'unit': unit,
+                            'timestamp': datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).strftime("%Y-%m-%d %H:%M:%S")
+                        }
+                        if send_to_sheet(client, sheet_name, data):
+                            st.success("✅ Đã gửi!")
+                            st.balloons()
+                            st.session_state.scanned_product = None
+                            st.session_state.barcode_data = None
+                            st.session_state.last_image_hash = None
+                            st.rerun()
+                    else:
+                        st.warning("⚠️ Nhập số lượng > 0!")
 
 # ===== TAB 2: XEM DỮ LIỆU =====
 with tab2:
