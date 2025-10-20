@@ -80,15 +80,45 @@ def connect_google_sheet(sheet_name):
 
 # Hàm quét barcode từ ảnh
 def scan_barcode(image):
-    """Quét barcode từ ảnh"""
+    """Quét barcode từ ảnh với tiền xử lý nâng cao"""
     try:
+        # Chuyển ảnh thành mảng numpy
         img_array = np.array(image)
         if len(img_array.shape) == 3:
             gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
         else:
             gray = img_array
-        gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-        barcodes = pyzbar.decode(gray)
+
+        # Làm mịn ảnh để giảm nhiễu
+        gray = cv2.GaussianBlur(gray, (5, 5), 0)
+
+        # Áp dụng ngưỡng thích nghi để cải thiện độ tương phản
+        thresh = cv2.adaptiveThreshold(
+            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
+        )
+
+        # Phát hiện cạnh bằng Canny để tìm vùng barcode
+        edges = cv2.Canny(thresh, 100, 200)
+
+        # Tìm contours để xác định vùng barcode
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if contours:
+            # Chọn contour lớn nhất (giả định là vùng barcode)
+            largest_contour = max(contours, key=cv2.contourArea)
+            x, y, w, h = cv2.boundingRect(largest_contour)
+            # Cắt vùng barcode để tập trung xử lý
+            roi = gray[y:y+h, x:x+w]
+            if roi.size == 0:
+                roi = gray  # Fallback về ảnh gốc nếu cắt thất bại
+        else:
+            roi = gray
+
+        # Thử quét barcode trên vùng đã cắt
+        barcodes = pyzbar.decode(roi)
+        if not barcodes:
+            # Thử lại với ảnh gốc nếu không tìm thấy trong vùng cắt
+            barcodes = pyzbar.decode(gray)
+
         if barcodes:
             return barcodes[0].data.decode('utf-8')
         return None
@@ -135,10 +165,24 @@ with st.sidebar:
         help="Tên của Google Sheet bạn muốn lưu dữ liệu"
     )
     st.markdown("---")
+    st.subheader("📖 Hướng dẫn")
+    with st.expander("Cách thiết lập Google Sheets"):
+        st.markdown("""
+            **Bước 1:** Tạo Google Cloud Project
+            1. Vào [Google Cloud Console](https://console.cloud.google.com/)
+            2. Tạo project mới
+            3. Enable Google Sheets API và Google Drive API
+            
+            **Bước 2:** Tạo Service Account
+            1. Vào IAM & Admin → Service Accounts
+            2. Tạo service account mới
+            3. Tạo key (JSON) và tải về
+            4. Share Google Sheet với email từ service account
+        """)
 
 # Main content
 try:
-    tab1, tab2, tab3 = st.tabs(["📸 Quét Barcode", "📊 Xem Dữ Liệu", "ℹ️ Hướng Dẫn"])
+    tab1, tab2 = st.tabs(["📸 Quét Barcode", "📊 Xem Dữ Liệu"])
 except Exception as e:
     st.error(f"Lỗi khi tạo tabs: {e}")
     st.stop()
@@ -153,7 +197,14 @@ with tab1:
             horizontal=True
         )
 
+    # Hướng dẫn sử dụng camera
     if scan_method == "📷 Chụp ảnh":
+        st.info("""
+            **Mẹo quét barcode:**
+            - Đặt barcode ở trung tâm khung hình.
+            - Đảm bảo ánh sáng tốt, tránh bóng hoặc phản chiếu.
+            - Giữ camera ổn định để tránh mờ.
+        """)
         camera_image = st.camera_input("Chụp ảnh barcode")
         if camera_image:
             image = Image.open(camera_image)
@@ -165,7 +216,7 @@ with tab1:
                 st.session_state.scanned_product = lookup_product(barcode)
                 st.success(f"✅ Đã quét được barcode: {barcode}")
             else:
-                st.error("❌ Không tìm thấy barcode trong ảnh!")
+                st.error("❌ Không tìm thấy barcode trong ảnh! Vui lòng thử lại với ảnh rõ nét hơn.")
 
     elif scan_method == "📁 Upload ảnh":
         uploaded_file = st.file_uploader(
@@ -183,7 +234,7 @@ with tab1:
                 st.session_state.scanned_product = lookup_product(barcode)
                 st.success(f"✅ Đã quét được barcode: {barcode}")
             else:
-                st.error("❌ Không tìm thấy barcode trong ảnh!")
+                st.error("❌ Không tìm thấy barcode trong ảnh! Vui lòng thử lại với ảnh rõ nét hơn.")
 
     else:  # Nhập thủ công
         manual_barcode = st.text_input("Nhập mã barcode:", max_chars=20)
@@ -276,4 +327,7 @@ with tab2:
 
 # Footer
 st.markdown("---")
-st.markdown("<div style='text-align: center; color: #666;'>Dũng Phạm</div>",unsafe_allow_html=True)
+st.markdown(
+    "<div style='text-align: center; color: #666;'>Made with ❤️ using Streamlit</div>",
+    unsafe_allow_html=True
+)
