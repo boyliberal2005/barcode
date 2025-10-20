@@ -12,7 +12,8 @@ import google.generativeai as genai
 import io
 
 # Cấu hình Gemini API
-genai.configure(api_key="AIzaSyA52qNG0pm7JD9E5Jhp_GhcwjdgXJd8sXQ")
+genai.configure(api_key=st.secrets.get("GEMINI_API_KEY", "your-local-api-key-for-testing"))
+
 # Cấu hình trang
 st.set_page_config(
     page_title="Quét Barcode",
@@ -63,6 +64,8 @@ if 'scanned_product' not in st.session_state:
     st.session_state.scanned_product = None
 if 'barcode_data' not in st.session_state:
     st.session_state.barcode_data = None
+if 'temp_barcode' not in st.session_state:
+    st.session_state.temp_barcode = None
 
 # Header
 st.title("📦 Quét Barcode Sản Phẩm")
@@ -183,12 +186,18 @@ def lookup_product(barcode, sheet):
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
         if not df.empty and 'Barcode' in df.columns:
+            # Chuẩn hóa barcode: chuyển thành chuỗi, loại bỏ khoảng trắng
+            barcode = str(barcode).strip()
+            df['Barcode'] = df['Barcode'].astype(str).str.strip()
             match = df[df['Barcode'] == barcode]
             if not match.empty:
                 return {
                     'name': match.iloc[0]['Tên SP'],
                     'brand': match.iloc[0]['Thương hiệu']
                 }
+            else:
+                # Debug: Hiển thị dữ liệu Product_List
+                st.info(f"Dữ liệu Product_List (debug):\n{df.to_markdown()}")
         return {'name': 'Sản phẩm không xác định', 'brand': 'N/A'}
     except Exception as e:
         st.error(f"Lỗi tra cứu sản phẩm: {e}")
@@ -198,9 +207,11 @@ def lookup_product(barcode, sheet):
 def update_product(sheet, barcode, product_name, brand):
     """Thêm hoặc cập nhật sản phẩm trong Google Sheet"""
     try:
+        barcode = str(barcode).strip()
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
         if not df.empty and 'Barcode' in df.columns:
+            df['Barcode'] = df['Barcode'].astype(str).str.strip()
             match = df[df['Barcode'] == barcode]
             if not match.empty:
                 row_index = match.index[0] + 2
@@ -305,6 +316,10 @@ with tab1:
                             'Vui lòng thêm sản phẩm trong tab "Cập nhật Barcode".</div>',
                             unsafe_allow_html=True
                         )
+                        if st.button("➕ Thêm sản phẩm này", type="primary"):
+                            st.session_state.temp_barcode = barcode
+                            st.session_state.tab = "tab3"
+                            st.rerun()
                 else:
                     st.error("❌ Lỗi kết nối sheet Product_List!")
             else:
@@ -333,13 +348,17 @@ with tab1:
                             'Vui lòng thêm sản phẩm trong tab "Cập nhật Barcode".</div>',
                             unsafe_allow_html=True
                         )
+                        if st.button("➕ Thêm sản phẩm này", type="primary"):
+                            st.session_state.temp_barcode = barcode
+                            st.session_state.tab = "tab3"
+                            st.rerun()
                 else:
                     st.error("❌ Lỗi kết nối sheet Product_List!")
             else:
                 st.error("❌ Không tìm thấy barcode trong ảnh! Vui lòng thử lại.")
 
     else:  # Nhập thủ công
-        manual_barcode = st.text_input("Nhập mã barcode:", max_chars=20)
+        manual_barcode = st.text_input("Nhập mã barcode:", max_chars=20, value=st.session_state.temp_barcode or "")
         if st.button("🔍 Tra cứu"):
             if manual_barcode:
                 st.session_state.barcode_data = manual_barcode
@@ -353,6 +372,10 @@ with tab1:
                             'Vui lòng thêm sản phẩm trong tab "Cập nhật Barcode".</div>',
                             unsafe_allow_html=True
                         )
+                        if st.button("➕ Thêm sản phẩm này", type="primary"):
+                            st.session_state.temp_barcode = manual_barcode
+                            st.session_state.tab = "tab3"
+                            st.rerun()
                 else:
                     st.error("❌ Lỗi kết nối sheet Product_List!")
             else:
@@ -388,6 +411,7 @@ with tab1:
             if st.button("🔄 Quét lại", use_container_width=True):
                 st.session_state.scanned_product = None
                 st.session_state.barcode_data = None
+                st.session_state.temp_barcode = None
                 st.rerun()
         with col2:
             if st.button("📤 Gửi lên Google Sheets", type="primary", use_container_width=True):
@@ -407,6 +431,7 @@ with tab1:
                             st.balloons()
                             st.session_state.scanned_product = None
                             st.session_state.barcode_data = None
+                            st.session_state.temp_barcode = None
                         else:
                             st.error("❌ Gửi dữ liệu thất bại!")
                     else:
@@ -442,7 +467,7 @@ with tab2:
 with tab3:
     st.subheader("🛠 Cập nhật Barcode")
     st.markdown("Nhập thông tin để thêm hoặc cập nhật sản phẩm vào Product_List.")
-    barcode_input = st.text_input("Mã Barcode", max_chars=20)
+    barcode_input = st.text_input("Mã Barcode", max_chars=20, value=st.session_state.temp_barcode or "")
     product_name = st.text_input("Tên sản phẩm")
     brand = st.text_input("Thương hiệu")
     if st.button("💾 Lưu sản phẩm", type="primary"):
@@ -452,6 +477,11 @@ with tab3:
                 if update_product(product_sheet, barcode_input, product_name, brand):
                     st.success(f"✅ Đã lưu/cập nhật barcode: {barcode_input}")
                     st.balloons()
+                    st.session_state.temp_barcode = None
+                    if st.session_state.barcode_data == barcode_input:
+                        st.session_state.scanned_product = {'name': product_name, 'brand': brand}
+                        st.session_state.tab = "tab1"
+                        st.rerun()
                 else:
                     st.error("❌ Lỗi khi lưu sản phẩm!")
             else:
