@@ -135,19 +135,6 @@ with st.sidebar:
         help="Tên của Google Sheet bạn muốn lưu dữ liệu"
     )
     st.markdown("---")
-    st.subheader("📖 Hướng dẫn")
-    with st.expander("Cách thiết lập Google Sheets"):
-        st.markdown("""
-            **Bước 1:** Tạo Google Cloud Project
-            1. Vào [Google Cloud Console](https://console.cloud.google.com/)
-            2. Tạo project mới
-            3. Enable Google Sheets API và Google Drive API
-            
-            **Bước 2:** Tạo Service Account
-            1. Vào IAM & Admin → Service Accounts
-            2. Tạo service account mới
-            3. Tạo key (JSON) và tải về
-            4. Share Google Sheet với email từ service account
         """)
 
 # Main content
