@@ -1,6 +1,5 @@
 streamlit>=1.38.0
 Pillow>=10.4.0
-opencv-python-headless>=4.8.0.76
 gspread>=5.11.3
 google-auth>=2.23.0
 google-auth-oauthlib>=1.0.0
