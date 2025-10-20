@@ -112,14 +112,6 @@ def scan_barcode_gemini(image):
     except Exception as e:
         return None
 
-def scan_barcode(image):
-    """Quét barcode: pyzbar trước, Gemini fallback"""
-    result = scan_barcode_pyzbar(image)
-    if result:
-        return result
-    with st.spinner("Dùng AI để quét..."):
-        return scan_barcode_gemini(image)
-
 # ==================== CORE FUNCTIONS ====================
 
 def lookup_product_fast(barcode, df):
