@@ -5,17 +5,18 @@ import numpy as np
 from PIL import Image
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime
+from datetime import datetime, date
 import pandas as pd
 import pytz
 import google.generativeai as genai
 import io
+import base64  # Để mã hóa trạng thái đăng nhập đơn giản
 
 # Cấu hình Gemini API
 genai.configure(api_key="AIzaSyA52qNG0pm7JD9E5Jhp_GhcwjdgXJd8sXQ")
 # Cấu hình trang
 st.set_page_config(
-    page_title="Viva Star Coffee - Kiểm Kho",
+    page_title="Quét Barcode",
     page_icon="📦",
     layout="centered"
 )
@@ -59,8 +60,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Khởi tạo session state
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
 if 'scanned_product' not in st.session_state:
     st.session_state.scanned_product = None
 if 'barcode_data' not in st.session_state:
@@ -76,6 +75,39 @@ HARDCODED_PASS = "A@bcde6789"
 def check_login(username, password):
     """Kiểm tra thông tin đăng nhập"""
     return username == HARDCODED_USER and password == HARDCODED_PASS
+
+# Hàm lưu trạng thái đăng nhập vào query params (để lưu sau refresh)
+def set_logged_in():
+    params = st.experimental_get_query_params()
+    params['logged_in'] = [base64.b64encode(b"true").decode("utf-8")]
+    st.experimental_set_query_params(**params)
+    st.session_state.logged_in = True
+
+# Hàm kiểm tra trạng thái đăng nhập từ query params
+def is_logged_in():
+    params = st.experimental_get_query_params()
+    if 'logged_in' in params:
+        try:
+            decoded = base64.b64decode(params['logged_in'][0]).decode("utf-8")
+            return decoded == "true"
+        except:
+            return False
+    return False
+
+# Hàm logout và xóa query params
+def logout():
+    params = st.experimental_get_query_params()
+    if 'logged_in' in params:
+        del params['logged_in']
+    st.experimental_set_query_params(**params)
+    st.session_state.logged_in = False
+    st.session_state.scanned_product = None
+    st.session_state.barcode_data = None
+    st.session_state.temp_barcode = None
+    st.rerun()
+
+# Đặt trạng thái đăng nhập ban đầu từ query params
+st.session_state.logged_in = is_logged_in()
 
 # Hàm kết nối Google Sheets
 def connect_google_sheet(sheet_name, worksheet_name):
@@ -263,16 +295,12 @@ if not st.session_state.logged_in:
                 st.error("❌ Tên người dùng hoặc mật khẩu không đúng!")
 else:
     # Giao diện chính sau khi đăng nhập
-    st.title("📦 Viva Star Coffee - Kiểm Kho")
+    st.title("📦 Quét Barcode Sản Phẩm")
     st.markdown("---")
     
     # Nút đăng xuất
     if st.button("🚪 Đăng xuất"):
-        st.session_state.logged_in = False
-        st.session_state.scanned_product = None
-        st.session_state.barcode_data = None
-        st.session_state.temp_barcode = None
-        st.rerun()
+        logout()
 
     # Sidebar - Cấu hình Google Sheets
     with st.sidebar:
@@ -283,6 +311,28 @@ else:
             value="Barcode_Data",
             help="Tên của Google Sheet bạn muốn lưu dữ liệu"
         )
+        st.markdown("---")
+        st.subheader("📖 Hướng dẫn")
+        with st.expander("Cách thiết lập Google Sheets"):
+            st.markdown("""
+                **Bước 1:** Tạo Google Cloud Project
+                1. Vào [Google Cloud Console](https://console.cloud.google.com/)
+                2. Tạo project mới
+                3. Enable Google Sheets API và Google Drive API
+                
+                **Bước 2:** Tạo Service Account
+                1. Vào IAM & Admin → Service Accounts
+                2. Tạo service account mới
+                3. Tạo key (JSON) và tải về
+                4. Share Google Sheet với email từ service account (Editor)
+                
+                **Bước 3:** Cấu hình Sheet
+                - Tạo sheet "Barcode_Data" với hai worksheet:
+                  - "Barcode_Data": Header: Barcode, Tên SP, Thương hiệu, Số lượng, Đơn vị, Thời gian
+                  - "Product_List": Header: Barcode, Tên SP, Thương hiệu
+                - Dữ liệu mẫu cho Product_List:
+                  - 8935049502142 | Coca Cola 330ml | Coca Cola
+            """)
 
     # Main content
     try:
@@ -439,9 +489,11 @@ else:
                             if send_to_google_sheet(data_sheet, data):
                                 st.success("✅ Đã gửi dữ liệu thành công!")
                                 st.balloons()
+                                # Reset form sau gửi thành công
                                 st.session_state.scanned_product = None
                                 st.session_state.barcode_data = None
                                 st.session_state.temp_barcode = None
+                                st.rerun()  # Làm mới app để reset form
                             else:
                                 st.error("❌ Gửi dữ liệu thất bại!")
                         else:
@@ -451,28 +503,60 @@ else:
 
     with tab2:
         st.subheader("📊 Dữ liệu đã lưu")
-        if st.button("🔄 Tải dữ liệu từ Google Sheets"):
+        st.markdown("Xem dữ liệu đã lưu từ Google Sheets, mặc định là dữ liệu của ngày hôm nay.")
+        
+        # Lọc theo khoảng thời gian
+        today = date.today()
+        col1, col2 = st.columns(2)
+        with col1:
+            start_date = st.date_input("Từ ngày:", value=today)
+        with col2:
+            end_date = st.date_input("Đến ngày:", value=today)
+        
+        if st.button("🔄 Tải dữ liệu"):
             data_sheet = connect_google_sheet(sheet_name, "Barcode_Data")
             if data_sheet:
                 try:
                     data = data_sheet.get_all_records()
                     if data:
                         df = pd.DataFrame(data)
-                        st.dataframe(df, use_container_width=True)
-                        st.markdown("---")
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Tổng số bản ghi", len(df))
-                        with col2:
-                            st.metric("Số sản phẩm", df['Barcode'].nunique())
-                        with col3:
-                            if 'Số lượng' in df.columns:
-                                total_qty = df['Số lượng'].sum()
-                                st.metric("Tổng số lượng", f"{total_qty:.2f}")
+                        if 'Thời gian' in df.columns:
+                            # Chuyển cột Thời gian thành datetime
+                            df['Thời gian'] = pd.to_datetime(df['Thời gian'], format='%Y-%m-%d %H:%M:%S')
+                            # Lọc theo khoảng thời gian
+                            mask = (df['Thời gian'].dt.date >= start_date) & (df['Thời gian'].dt.date <= end_date)
+                            filtered_df = df[mask]
+                            if not filtered_df.empty:
+                                st.dataframe(filtered_df, use_container_width=True)
+                                st.markdown("---")
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.metric("Tổng số bản ghi", len(filtered_df))
+                                with col2:
+                                    st.metric("Số sản phẩm", filtered_df['Barcode'].nunique())
+                                with col3:
+                                    if 'Số lượng' in filtered_df.columns:
+                                        total_qty = filtered_df['Số lượng'].sum()
+                                        st.metric("Tổng số lượng", f"{total_qty:.2f}")
+                                
+                                # Tải file CSV
+                                csv = filtered_df.to_csv(index=False)
+                                st.download_button(
+                                    label="📥 Tải file CSV",
+                                    data=csv,
+                                    file_name=f"barcode_data_{start_date}_to_{end_date}.csv",
+                                    mime="text/csv"
+                                )
+                            else:
+                                st.info("📭 Không có dữ liệu trong khoảng thời gian này!")
+                        else:
+                            st.error("❌ Cột 'Thời gian' không tồn tại trong dữ liệu!")
                     else:
                         st.info("📭 Chưa có dữ liệu nào!")
                 except Exception as e:
                     st.error(f"Lỗi tải dữ liệu: {e}")
+            else:
+                st.error("❌ Lỗi kết nối sheet Barcode_Data!")
 
     with tab3:
         st.subheader("🛠 Cập nhật Barcode")
@@ -502,6 +586,6 @@ else:
     # Footer
     st.markdown("---")
     st.markdown(
-        "<div style='text-align: center; color: #666;'>@Viva Star Coffee - 34B Đường Số 2, Lữ Gia, Quận 11</div>",
+        "<div style='text-align: center; color: #666;'>Made with ❤️ using Streamlit</div>",
         unsafe_allow_html=True
     )
