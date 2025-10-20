@@ -465,5 +465,3 @@ st.markdown(
     "<div style='text-align: center; color: #666;'>Made with ❤️ using Streamlit</div>",
     unsafe_allow_html=True
 )
-
-Nếu lỗi vẫn xảy ra, hãy chia sẻ log chi tiết hoặc ảnh chụp lỗi. Bạn muốn thêm tính năng xóa sản phẩm trong “Product_List” hoặc tích hợp Google Cloud Vision API để thay Gemini không?
