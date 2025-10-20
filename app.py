@@ -90,41 +90,12 @@ def get_worksheet(_client, sheet_name, worksheet_name):
         st.error(f"Lỗi worksheet: {e}")
         return None
 
-# ==================== LAZY IMPORT ====================
-
-def scan_barcode_pyzbar(image):
-    """Lazy import pyzbar và cv2 chỉ khi cần"""
-    try:
-        import cv2
-        import numpy as np
-        from pyzbar import pyzbar
-        
-        img_array = np.array(image)
-        if len(img_array.shape) == 3:
-            gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-        else:
-            gray = img_array
-
-        barcodes = pyzbar.decode(gray)
-        if barcodes:
-            return barcodes[0].data.decode('utf-8')
-        
-        # Thử với tiền xử lý nếu không quét được
-        gray = cv2.GaussianBlur(gray, (5, 5), 0)
-        barcodes = pyzbar.decode(gray)
-        if barcodes:
-            return barcodes[0].data.decode('utf-8')
-        
-        return None
-    except Exception as e:
-        return None
-
 def scan_barcode_gemini(image):
     """Lazy import Gemini chỉ khi pyzbar thất bại"""
     try:
         import google.generativeai as genai
         
-        genai.configure(api_key=st.secrets.get("GEMINI_API_KEY", "your-local-api-key-for-testing"))
+        genai.configure(api_key="AIzaSyA52qNG0pm7JD9E5Jhp_GhcwjdgXJd8sXQ")
         img_bytes = io.BytesIO()
         image.save(img_bytes, format='PNG')
         img_bytes = img_bytes.getvalue()
