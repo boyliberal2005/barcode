@@ -291,7 +291,7 @@ if not st.session_state.logged_in:
                 st.error("❌ Tên người dùng hoặc mật khẩu không đúng!")
 else:
     # Giao diện chính sau khi đăng nhập
-    st.title("📦 Quét Barcode Sản Phẩm")
+    st.title("📦 Viva Star Coffee - Kiểm Hàng")
     st.markdown("---")
     
     # Nút đăng xuất
@@ -307,28 +307,6 @@ else:
             value="Barcode_Data",
             help="Tên của Google Sheet bạn muốn lưu dữ liệu"
         )
-        st.markdown("---")
-        st.subheader("📖 Hướng dẫn")
-        with st.expander("Cách thiết lập Google Sheets"):
-            st.markdown("""
-                **Bước 1:** Tạo Google Cloud Project
-                1. Vào [Google Cloud Console](https://console.cloud.google.com/)
-                2. Tạo project mới
-                3. Enable Google Sheets API và Google Drive API
-                
-                **Bước 2:** Tạo Service Account
-                1. Vào IAM & Admin → Service Accounts
-                2. Tạo service account mới
-                3. Tạo key (JSON) và tải về
-                4. Share Google Sheet với email từ service account (Editor)
-                
-                **Bước 3:** Cấu hình Sheet
-                - Tạo sheet "Barcode_Data" với hai worksheet:
-                  - "Barcode_Data": Header: Barcode, Tên SP, Thương hiệu, Số lượng, Đơn vị, Thời gian
-                  - "Product_List": Header: Barcode, Tên SP, Thương hiệu
-                - Dữ liệu mẫu cho Product_List:
-                  - 8935049502142 | Coca Cola 330ml | Coca Cola
-            """)
 
     # Main content
     try:
@@ -586,6 +564,6 @@ else:
     # Footer
     st.markdown("---")
     st.markdown(
-        "<div style='text-align: center; color: #666;'>Made with ❤️ using Streamlit</div>",
+        "<div style='text-align: center; color: #666;'>@2025 Viva Star Coffee - 34B Đường Số 2, Lữ Gia, Quận 11</div>",
         unsafe_allow_html=True
     )
