@@ -153,6 +153,9 @@ def scan_barcode(image):
 
 def lookup_product_fast(barcode, df):
     """Tra cứu nhanh từ DataFrame đã cache"""
+    if df.empty:
+        return {'name': 'Sản phẩm không xác định', 'brand': 'N/A'}
+    
     barcode = str(barcode).strip()
     match = df[df['Barcode'] == barcode]
     if not match.empty:
