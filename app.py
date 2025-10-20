@@ -15,7 +15,7 @@ st.set_page_config(
     layout="centered"
 )
 
-# CSS tùy chỉnh - Tối giản
+# CSS tùy chỉnh
 st.markdown("""
     <style>
     .main {background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);}
@@ -31,7 +31,9 @@ for key, default in {
     'last_image_hash': None,
     'product_cache': None,
     'client': None,
-    'sheet_name': 'Barcode_Data'
+    'sheet_name': 'Barcode_Data',
+    'scanning_done': False,  # Flag để tránh quét lại
+    'form_submitted': False  # Flag để reset form
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -161,10 +163,12 @@ def save_product(barcode, name, brand):
         return False
 
 def reset_form():
-    """Reset form"""
+    """Reset form hoàn toàn"""
     st.session_state.scanned_product = None
     st.session_state.barcode_data = None
     st.session_state.last_image_hash = None
+    st.session_state.scanning_done = False
+    st.session_state.form_submitted = False
 
 # ==================== AUTH ====================
 
@@ -228,37 +232,48 @@ tab1, tab2, tab3 = st.tabs(["📸 Quét Barcode", "📊 Xem Dữ Liệu", "🛠 
 
 # ===== TAB 1 =====
 with tab1:
+    # Reset nếu form vừa submit thành công
+    if st.session_state.form_submitted:
+        reset_form()
+        st.rerun()
+    
     scan_method = st.radio("Phương thức:", ["📷 Chụp", "📁 Upload", "⌨️ Nhập"], horizontal=True)
 
-    # Quét barcode
+    # Quét barcode - CHỈ KHI CHƯA QUÉT
     if scan_method == "📷 Chụp":
         camera_image = st.camera_input("Chụp ảnh")
         if camera_image:
-            image = Image.open(camera_image)
             current_hash = hash(camera_image.getvalue())
             
-            if current_hash != st.session_state.last_image_hash:
+            # CHỈ quét nếu là ảnh MỚI và CHƯA quét xong
+            if current_hash != st.session_state.last_image_hash and not st.session_state.scanning_done:
                 st.session_state.last_image_hash = current_hash
+                image = Image.open(camera_image)
+                
                 with st.spinner("🤖 Đang quét..."):
                     barcode = scan_barcode_gemini(image)
                     if barcode:
                         st.session_state.barcode_data = barcode
                         st.session_state.scanned_product = lookup_product(barcode, product_df)
+                        st.session_state.scanning_done = True  # Đánh dấu đã quét xong
                         st.rerun()
 
     elif scan_method == "📁 Upload":
         uploaded = st.file_uploader("Chọn ảnh", type=['jpg', 'jpeg', 'png'])
         if uploaded:
-            image = Image.open(uploaded)
             current_hash = hash(uploaded.getvalue())
             
-            if current_hash != st.session_state.last_image_hash:
+            # CHỈ quét nếu là ảnh MỚI và CHƯA quét xong
+            if current_hash != st.session_state.last_image_hash and not st.session_state.scanning_done:
                 st.session_state.last_image_hash = current_hash
+                image = Image.open(uploaded)
+                
                 with st.spinner("🤖 Đang quét..."):
                     barcode = scan_barcode_gemini(image)
                     if barcode:
                         st.session_state.barcode_data = barcode
                         st.session_state.scanned_product = lookup_product(barcode, product_df)
+                        st.session_state.scanning_done = True  # Đánh dấu đã quét xong
                         st.rerun()
 
     else:  # Nhập thủ công
@@ -267,10 +282,11 @@ with tab1:
             if manual:
                 st.session_state.barcode_data = manual
                 st.session_state.scanned_product = lookup_product(manual, product_df)
+                st.session_state.scanning_done = True
                 st.rerun()
 
-    # Hiển thị form (nếu đã có barcode)
-    if st.session_state.barcode_data and st.session_state.scanned_product:
+    # Hiển thị form (nếu đã có barcode VÀ đã quét xong)
+    if st.session_state.barcode_data and st.session_state.scanned_product and st.session_state.scanning_done:
         st.success(f"✅ Barcode: {st.session_state.barcode_data}")
         
         if st.session_state.scanned_product['name'] == 'Sản phẩm không xác định':
@@ -287,9 +303,9 @@ with tab1:
             st.markdown("---")
             
             # FORM - Không rerun khi nhập
-            with st.form("input_form"):
+            with st.form("input_form", clear_on_submit=True):
                 col1, col2 = st.columns([2, 1])
-                qty = col1.number_input("Số lượng:", min_value=0.0, step=0.1, format="%.2f")
+                qty = col1.number_input("Số lượng:", min_value=0.0, step=0.1, format="%.2f", value=1.0)
                 unit = col2.selectbox("Đơn vị:", ["ml", "L", "g", "kg", "cái", "hộp", "chai"])
                 
                 col1, col2 = st.columns(2)
@@ -311,11 +327,13 @@ with tab1:
                             'timestamp': datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).strftime("%Y-%m-%d %H:%M:%S")
                         }
                         
-                        if send_to_sheet(data):
-                            st.success("✅ Đã gửi!")
-                            st.balloons()
-                            reset_form()
-                            st.rerun()
+                        with st.spinner("Đang gửi..."):
+                            if send_to_sheet(data):
+                                st.success("✅ Đã gửi thành công!")
+                                st.balloons()
+                                # Đánh dấu để reset ở rerun tiếp theo
+                                st.session_state.form_submitted = True
+                                st.rerun()
                     else:
                         st.warning("⚠️ Nhập số lượng > 0!")
 
@@ -332,32 +350,33 @@ with tab2:
         client = get_client()
         if client:
             try:
-                spreadsheet = client.open(st.session_state.sheet_name)
-                sheet = spreadsheet.worksheet("Barcode_Data")
-                data = sheet.get_all_records()
-                
-                if data:
-                    df = pd.DataFrame(data)
-                    df['Thời gian'] = pd.to_datetime(df['Thời gian'], errors='coerce')
-                    df = df.dropna(subset=['Thời gian'])
+                with st.spinner("Đang tải..."):
+                    spreadsheet = client.open(st.session_state.sheet_name)
+                    sheet = spreadsheet.worksheet("Barcode_Data")
+                    data = sheet.get_all_records()
                     
-                    mask = (df['Thời gian'].dt.date >= start_date) & (df['Thời gian'].dt.date <= end_date)
-                    filtered = df[mask]
-                    
-                    if not filtered.empty:
-                        st.dataframe(filtered, use_container_width=True)
+                    if data:
+                        df = pd.DataFrame(data)
+                        df['Thời gian'] = pd.to_datetime(df['Thời gian'], errors='coerce')
+                        df = df.dropna(subset=['Thời gian'])
                         
-                        col1, col2, col3 = st.columns(3)
-                        col1.metric("Tổng bản ghi", len(filtered))
-                        col2.metric("Số sản phẩm", filtered['Barcode'].nunique())
-                        col3.metric("Tổng SL", f"{filtered['Số lượng'].sum():.2f}")
+                        mask = (df['Thời gian'].dt.date >= start_date) & (df['Thời gian'].dt.date <= end_date)
+                        filtered = df[mask]
                         
-                        csv = filtered.to_csv(index=False)
-                        st.download_button("📥 Tải CSV", csv, f"data_{start_date}_{end_date}.csv", "text/csv")
+                        if not filtered.empty:
+                            st.dataframe(filtered, use_container_width=True)
+                            
+                            col1, col2, col3 = st.columns(3)
+                            col1.metric("Tổng bản ghi", len(filtered))
+                            col2.metric("Số sản phẩm", filtered['Barcode'].nunique())
+                            col3.metric("Tổng SL", f"{filtered['Số lượng'].sum():.2f}")
+                            
+                            csv = filtered.to_csv(index=False)
+                            st.download_button("📥 Tải CSV", csv, f"data_{start_date}_{end_date}.csv", "text/csv")
+                        else:
+                            st.info("📭 Không có dữ liệu trong khoảng thời gian này!")
                     else:
-                        st.info("📭 Không có dữ liệu!")
-                else:
-                    st.info("📭 Chưa có dữ liệu!")
+                        st.info("📭 Chưa có dữ liệu!")
             except Exception as e:
                 st.error(f"Lỗi: {e}")
 
@@ -365,7 +384,7 @@ with tab2:
 with tab3:
     st.subheader("🛠 Cập nhật Barcode")
     
-    with st.form("update_form"):
+    with st.form("update_form", clear_on_submit=True):
         barcode_in = st.text_input("Mã Barcode", max_chars=20)
         name_in = st.text_input("Tên sản phẩm")
         brand_in = st.text_input("Thương hiệu")
@@ -373,11 +392,12 @@ with tab3:
         
         if save_btn:
             if barcode_in and name_in and brand_in:
-                if save_product(barcode_in, name_in, brand_in):
-                    st.success(f"✅ Đã lưu: {barcode_in}")
-                    st.balloons()
+                with st.spinner("Đang lưu..."):
+                    if save_product(barcode_in, name_in, brand_in):
+                        st.success(f"✅ Đã lưu: {barcode_in}")
+                        st.balloons()
             else:
-                st.warning("⚠️ Nhập đầy đủ!")
+                st.warning("⚠️ Nhập đầy đủ thông tin!")
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: #666;'>@2025 Viva Star Coffee</div>", unsafe_allow_html=True)
