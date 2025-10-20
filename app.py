@@ -1,3 +1,4 @@
+```python
 import streamlit as st
 from pyzbar import pyzbar
 import cv2
@@ -15,7 +16,7 @@ import io
 genai.configure(api_key="AIzaSyA52qNG0pm7JD9E5Jhp_GhcwjdgXJd8sXQ")
 # Cấu hình trang
 st.set_page_config(
-    page_title="Quét Barcode",
+    page_title="Viva Star Coffee - Kiểm Kho",
     page_icon="📦",
     layout="centered"
 )
@@ -59,6 +60,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Khởi tạo session state
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
 if 'scanned_product' not in st.session_state:
     st.session_state.scanned_product = None
 if 'barcode_data' not in st.session_state:
@@ -66,9 +69,14 @@ if 'barcode_data' not in st.session_state:
 if 'temp_barcode' not in st.session_state:
     st.session_state.temp_barcode = None
 
-# Header
-st.title("📦 Quét Barcode Sản Phẩm")
-st.markdown("---")
+# Thông tin đăng nhập hardcode
+HARDCODED_USER = "admin@123"
+HARDCODED_PASS = "A@bcde6789"
+
+# Hàm kiểm tra đăng nhập
+def check_login(username, password):
+    """Kiểm tra thông tin đăng nhập"""
+    return username == HARDCODED_USER and password == HARDCODED_PASS
 
 # Hàm kết nối Google Sheets
 def connect_google_sheet(sheet_name, worksheet_name):
@@ -86,7 +94,6 @@ def connect_google_sheet(sheet_name, worksheet_name):
             creds = Credentials.from_service_account_file('credentials.json', scopes=scope)
         client = gspread.authorize(creds)
         
-        # Mở spreadsheet
         try:
             spreadsheet = client.open(sheet_name)
         except gspread.exceptions.SpreadsheetNotFound:
@@ -98,7 +105,6 @@ def connect_google_sheet(sheet_name, worksheet_name):
                 role='writer'
             )
         
-        # Kiểm tra và tạo worksheet
         try:
             sheet = spreadsheet.worksheet(worksheet_name)
         except gspread.exceptions.WorksheetNotFound:
@@ -185,7 +191,6 @@ def lookup_product(barcode, sheet):
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
         if not df.empty and 'Barcode' in df.columns:
-            # Chuẩn hóa barcode: chuyển thành chuỗi, loại bỏ khoảng trắng
             barcode = str(barcode).strip()
             df['Barcode'] = df['Barcode'].astype(str).str.strip()
             match = df[df['Barcode'] == barcode]
@@ -195,7 +200,6 @@ def lookup_product(barcode, sheet):
                     'brand': match.iloc[0]['Thương hiệu']
                 }
             else:
-                # Debug: Hiển thị dữ liệu Product_List
                 st.info(f"Dữ liệu Product_List (debug):\n{df.to_markdown()}")
         return {'name': 'Sản phẩm không xác định', 'brand': 'N/A'}
     except Exception as e:
@@ -241,256 +245,286 @@ def send_to_google_sheet(sheet, data):
         st.error(f"Lỗi gửi dữ liệu: {e}")
         return False
 
-# Sidebar - Cấu hình Google Sheets
-with st.sidebar:
-    st.header("⚙️ Cấu hình")
-    st.subheader("Google Sheets")
-    sheet_name = st.text_input(
-        "Tên Google Sheet",
-        value="Barcode_Data",
-        help="Tên của Google Sheet bạn muốn lưu dữ liệu"
-    )
+# Form đăng nhập
+if not st.session_state.logged_in:
+    st.title("🔒 Đăng Nhập")
+    st.markdown("Vui lòng đăng nhập để sử dụng ứng dụng.")
+    with st.form("login_form"):
+        username = st.text_input("Tên người dùng", placeholder="Nhập tên người dùng")
+        password = st.text_input("Mật khẩu", type="password", placeholder="Nhập mật khẩu")
+        submit_button = st.form_submit_button("Đăng nhập", type="primary")
+        
+        if submit_button:
+            if check_login(username, password):
+                st.session_state.logged_in = True
+                st.success("✅ Đăng nhập thành công!")
+                st.balloons()
+                st.rerun()
+            else:
+                st.error("❌ Tên người dùng hoặc mật khẩu không đúng!")
+else:
+    # Giao diện chính sau khi đăng nhập
+    st.title("📦 Quét Barcode Sản Phẩm")
     st.markdown("---")
-    st.subheader("📖 Hướng dẫn")
-    with st.expander("Cách thiết lập Google Sheets"):
-        st.markdown("""
-            **Bước 1:** Tạo Google Cloud Project
-            1. Vào [Google Cloud Console](https://console.cloud.google.com/)
-            2. Tạo project mới
-            3. Enable Google Sheets API và Google Drive API
-            
-            **Bước 2:** Tạo Service Account
-            1. Vào IAM & Admin → Service Accounts
-            2. Tạo service account mới
-            3. Tạo key (JSON) và tải về
-            4. Share Google Sheet với email từ service account (Editor)
-            
-            **Bước 3:** Cấu hình Sheet
-            - Tạo sheet "Barcode_Data" với hai worksheet:
-              - "Barcode_Data": Header: Barcode, Tên SP, Thương hiệu, Số lượng, Đơn vị, Thời gian
-              - "Product_List": Header: Barcode, Tên SP, Thương hiệu
-            - Dữ liệu mẫu cho Product_List:
-              - 8935049502142 | Coca Cola 330ml | Coca Cola
-        """)
+    
+    # Nút đăng xuất
+    if st.button("🚪 Đăng xuất"):
+        st.session_state.logged_in = False
+        st.session_state.scanned_product = None
+        st.session_state.barcode_data = None
+        st.session_state.temp_barcode = None
+        st.rerun()
 
-# Main content
-try:
-    tab1, tab2, tab3 = st.tabs(["📸 Quét Barcode", "📊 Xem Dữ Liệu", "🛠 Cập nhật Barcode"])
-except Exception as e:
-    st.error(f"Lỗi khi tạo tabs: {e}")
-    st.stop()
-
-with tab1:
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.subheader("Chọn cách quét")
-        scan_method = st.radio(
-            "Phương thức quét:",
-            ["📷 Chụp ảnh", "📁 Upload ảnh", "⌨️ Nhập thủ công"],
-            horizontal=True
+    # Sidebar - Cấu hình Google Sheets
+    with st.sidebar:
+        st.header("⚙️ Cấu hình")
+        st.subheader("Google Sheets")
+        sheet_name = st.text_input(
+            "Tên Google Sheet",
+            value="Barcode_Data",
+            help="Tên của Google Sheet bạn muốn lưu dữ liệu"
         )
-
-    if scan_method == "📷 Chụp ảnh":
-        st.info("""
-            **Mẹo quét barcode:**
-            - Đặt barcode ở trung tâm khung hình.
-            - Đảm bảo ánh sáng tốt, tránh bóng hoặc phản chiếu.
-            - Giữ camera ổn định để tránh mờ.
-        """)
-        camera_image = st.camera_input("Chụp ảnh barcode")
-        if camera_image:
-            image = Image.open(camera_image)
-            st.image(image, caption="Ảnh đã chụp", use_column_width=True)
-            with st.spinner("Đang quét barcode..."):
-                barcode = scan_barcode(image)
-            if barcode:
-                st.session_state.barcode_data = barcode
-                product_sheet = connect_google_sheet(sheet_name, "Product_List")
-                if product_sheet:
-                    st.session_state.scanned_product = lookup_product(barcode, product_sheet)
-                    st.success(f"✅ Đã quét được barcode: {barcode}")
-                    if st.session_state.scanned_product['name'] == 'Sản phẩm không xác định':
-                        st.markdown(
-                            f'<div class="warning-box">⚠️ Barcode <b>{barcode}</b> chưa có trong Product_List. '
-                            'Vui lòng thêm sản phẩm trong tab "Cập nhật Barcode".</div>',
-                            unsafe_allow_html=True
-                        )
-                        if st.button("➕ Thêm sản phẩm này", type="primary"):
-                            st.session_state.temp_barcode = barcode
-                            st.session_state.tab = "tab3"
-                            st.rerun()
-                else:
-                    st.error("❌ Lỗi kết nối sheet Product_List!")
-            else:
-                st.error("❌ Không tìm thấy barcode trong ảnh! Vui lòng thử lại.")
-
-    elif scan_method == "📁 Upload ảnh":
-        uploaded_file = st.file_uploader(
-            "Chọn ảnh barcode",
-            type=['jpg', 'jpeg', 'png'],
-            help="Hỗ trợ JPG, JPEG, PNG"
-        )
-        if uploaded_file:
-            image = Image.open(uploaded_file)
-            st.image(image, caption="Ảnh đã upload", use_column_width=True)
-            with st.spinner("Đang quét barcode..."):
-                barcode = scan_barcode(image)
-            if barcode:
-                st.session_state.barcode_data = barcode
-                product_sheet = connect_google_sheet(sheet_name, "Product_List")
-                if product_sheet:
-                    st.session_state.scanned_product = lookup_product(barcode, product_sheet)
-                    st.success(f"✅ Đã quét được barcode: {barcode}")
-                    if st.session_state.scanned_product['name'] == 'Sản phẩm không xác định':
-                        st.markdown(
-                            f'<div class="warning-box">⚠️ Barcode <b>{barcode}</b> chưa có trong Product_List. '
-                            'Vui lòng thêm sản phẩm trong tab "Cập nhật Barcode".</div>',
-                            unsafe_allow_html=True
-                        )
-                        if st.button("➕ Thêm sản phẩm này", type="primary"):
-                            st.session_state.temp_barcode = barcode
-                            st.session_state.tab = "tab3"
-                            st.rerun()
-                else:
-                    st.error("❌ Lỗi kết nối sheet Product_List!")
-            else:
-                st.error("❌ Không tìm thấy barcode trong ảnh! Vui lòng thử lại.")
-
-    else:  # Nhập thủ công
-        manual_barcode = st.text_input("Nhập mã barcode:", max_chars=20, value=st.session_state.temp_barcode or "")
-        if st.button("🔍 Tra cứu"):
-            if manual_barcode:
-                st.session_state.barcode_data = manual_barcode
-                product_sheet = connect_google_sheet(sheet_name, "Product_List")
-                if product_sheet:
-                    st.session_state.scanned_product = lookup_product(manual_barcode, product_sheet)
-                    st.success(f"✅ Đã tra cứu barcode: {manual_barcode}")
-                    if st.session_state.scanned_product['name'] == 'Sản phẩm không xác định':
-                        st.markdown(
-                            f'<div class="warning-box">⚠️ Barcode <b>{manual_barcode}</b> chưa có trong Product_List. '
-                            'Vui lòng thêm sản phẩm trong tab "Cập nhật Barcode".</div>',
-                            unsafe_allow_html=True
-                        )
-                        if st.button("➕ Thêm sản phẩm này", type="primary"):
-                            st.session_state.temp_barcode = manual_barcode
-                            st.session_state.tab = "tab3"
-                            st.rerun()
-                else:
-                    st.error("❌ Lỗi kết nối sheet Product_List!")
-            else:
-                st.warning("⚠️ Vui lòng nhập mã barcode!")
-
-    if st.session_state.scanned_product and st.session_state.scanned_product['name'] != 'Sản phẩm không xác định':
         st.markdown("---")
-        st.subheader("📦 Thông tin sản phẩm")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Tên sản phẩm", st.session_state.scanned_product['name'])
-        with col2:
-            st.metric("Thương hiệu", st.session_state.scanned_product['brand'])
-        st.info(f"🔢 Barcode: **{st.session_state.barcode_data}**")
-        st.markdown("---")
-        st.subheader("📝 Nhập số lượng")
+        st.subheader("📖 Hướng dẫn")
+        with st.expander("Cách thiết lập Google Sheets"):
+            st.markdown("""
+                **Bước 1:** Tạo Google Cloud Project
+                1. Vào [Google Cloud Console](https://console.cloud.google.com/)
+                2. Tạo project mới
+                3. Enable Google Sheets API và Google Drive API
+                
+                **Bước 2:** Tạo Service Account
+                1. Vào IAM & Admin → Service Accounts
+                2. Tạo service account mới
+                3. Tạo key (JSON) và tải về
+                4. Share Google Sheet với email từ service account (Editor)
+                
+                **Bước 3:** Cấu hình Sheet
+                - Tạo sheet "Barcode_Data" với hai worksheet:
+                  - "Barcode_Data": Header: Barcode, Tên SP, Thương hiệu, Số lượng, Đơn vị, Thời gian
+                  - "Product_List": Header: Barcode, Tên SP, Thương hiệu
+                - Dữ liệu mẫu cho Product_List:
+                  - 8935049502142 | Coca Cola 330ml | Coca Cola
+            """)
+
+    # Main content
+    try:
+        tab1, tab2, tab3 = st.tabs(["📸 Quét Barcode", "📊 Xem Dữ Liệu", "🛠 Cập nhật Barcode"])
+    except Exception as e:
+        st.error(f"Lỗi khi tạo tabs: {e}")
+        st.stop()
+
+    with tab1:
         col1, col2 = st.columns([2, 1])
         with col1:
-            quantity = st.number_input(
-                "Số lượng:",
-                min_value=0.0,
-                step=0.1,
-                format="%.2f"
+            st.subheader("Chọn cách quét")
+            scan_method = st.radio(
+                "Phương thức quét:",
+                ["📷 Chụp ảnh", "📁 Upload ảnh", "⌨️ Nhập thủ công"],
+                horizontal=True
             )
-        with col2:
-            unit = st.selectbox(
-                "Đơn vị:",
-                ["ml", "L", "g", "kg", "cái", "hộp", "chai"]
-            )
-        st.markdown("---")
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🔄 Quét lại", use_container_width=True):
-                st.session_state.scanned_product = None
-                st.session_state.barcode_data = None
-                st.session_state.temp_barcode = None
-                st.rerun()
-        with col2:
-            if st.button("📤 Gửi lên Google Sheets", type="primary", use_container_width=True):
-                if quantity > 0:
-                    data_sheet = connect_google_sheet(sheet_name, "Barcode_Data")
-                    if data_sheet:
-                        data = {
-                            'barcode': st.session_state.barcode_data,
-                            'product_name': st.session_state.scanned_product['name'],
-                            'brand': st.session_state.scanned_product['brand'],
-                            'quantity': quantity,
-                            'unit': unit,
-                            'timestamp': datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).strftime("%Y-%m-%d %H:%M:%S")
-                        }
-                        if send_to_google_sheet(data_sheet, data):
-                            st.success("✅ Đã gửi dữ liệu thành công!")
-                            st.balloons()
-                            st.session_state.scanned_product = None
-                            st.session_state.barcode_data = None
-                            st.session_state.temp_barcode = None
-                        else:
-                            st.error("❌ Gửi dữ liệu thất bại!")
+
+        if scan_method == "📷 Chụp ảnh":
+            st.info("""
+                **Mẹo quét barcode:**
+                - Đặt barcode ở trung tâm khung hình.
+                - Đảm bảo ánh sáng tốt, tránh bóng hoặc phản chiếu.
+                - Giữ camera ổn định để tránh mờ.
+            """)
+            camera_image = st.camera_input("Chụp ảnh barcode")
+            if camera_image:
+                image = Image.open(camera_image)
+                st.image(image, caption="Ảnh đã chụp", use_column_width=True)
+                with st.spinner("Đang quét barcode..."):
+                    barcode = scan_barcode(image)
+                if barcode:
+                    st.session_state.barcode_data = barcode
+                    product_sheet = connect_google_sheet(sheet_name, "Product_List")
+                    if product_sheet:
+                        st.session_state.scanned_product = lookup_product(barcode, product_sheet)
+                        st.success(f"✅ Đã quét được barcode: {barcode}")
+                        if st.session_state.scanned_product['name'] == 'Sản phẩm không xác định':
+                            st.markdown(
+                                f'<div class="warning-box">⚠️ Barcode <b>{barcode}</b> chưa có trong Product_List. '
+                                'Vui lòng thêm sản phẩm trong tab "Cập nhật Barcode".</div>',
+                                unsafe_allow_html=True
+                            )
+                            if st.button("➕ Thêm sản phẩm này", type="primary"):
+                                st.session_state.temp_barcode = barcode
+                                st.session_state.tab = "tab3"
+                                st.rerun()
                     else:
-                        st.error("❌ Lỗi kết nối sheet Barcode_Data!")
+                        st.error("❌ Lỗi kết nối sheet Product_List!")
                 else:
-                    st.warning("⚠️ Vui lòng nhập số lượng > 0!")
+                    st.error("❌ Không tìm thấy barcode trong ảnh! Vui lòng thử lại.")
 
-with tab2:
-    st.subheader("📊 Dữ liệu đã lưu")
-    if st.button("🔄 Tải dữ liệu từ Google Sheets"):
-        data_sheet = connect_google_sheet(sheet_name, "Barcode_Data")
-        if data_sheet:
-            try:
-                data = data_sheet.get_all_records()
-                if data:
-                    df = pd.DataFrame(data)
-                    st.dataframe(df, use_container_width=True)
-                    st.markdown("---")
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Tổng số bản ghi", len(df))
-                    with col2:
-                        st.metric("Số sản phẩm", df['Barcode'].nunique())
-                    with col3:
-                        if 'Số lượng' in df.columns:
-                            total_qty = df['Số lượng'].sum()
-                            st.metric("Tổng số lượng", f"{total_qty:.2f}")
+        elif scan_method == "📁 Upload ảnh":
+            uploaded_file = st.file_uploader(
+                "Chọn ảnh barcode",
+                type=['jpg', 'jpeg', 'png'],
+                help="Hỗ trợ JPG, JPEG, PNG"
+            )
+            if uploaded_file:
+                image = Image.open(uploaded_file)
+                st.image(image, caption="Ảnh đã upload", use_column_width=True)
+                with st.spinner("Đang quét barcode..."):
+                    barcode = scan_barcode(image)
+                if barcode:
+                    st.session_state.barcode_data = barcode
+                    product_sheet = connect_google_sheet(sheet_name, "Product_List")
+                    if product_sheet:
+                        st.session_state.scanned_product = lookup_product(barcode, product_sheet)
+                        st.success(f"✅ Đã quét được barcode: {barcode}")
+                        if st.session_state.scanned_product['name'] == 'Sản phẩm không xác định':
+                            st.markdown(
+                                f'<div class="warning-box">⚠️ Barcode <b>{barcode}</b> chưa có trong Product_List. '
+                                'Vui lòng thêm sản phẩm trong tab "Cập nhật Barcode".</div>',
+                                unsafe_allow_html=True
+                            )
+                            if st.button("➕ Thêm sản phẩm này", type="primary"):
+                                st.session_state.temp_barcode = barcode
+                                st.session_state.tab = "tab3"
+                                st.rerun()
+                    else:
+                        st.error("❌ Lỗi kết nối sheet Product_List!")
                 else:
-                    st.info("📭 Chưa có dữ liệu nào!")
-            except Exception as e:
-                st.error(f"Lỗi tải dữ liệu: {e}")
+                    st.error("❌ Không tìm thấy barcode trong ảnh! Vui lòng thử lại.")
 
-with tab3:
-    st.subheader("🛠 Cập nhật Barcode")
-    st.markdown("Nhập thông tin để thêm hoặc cập nhật sản phẩm vào Product_List.")
-    barcode_input = st.text_input("Mã Barcode", max_chars=20, value=st.session_state.temp_barcode or "")
-    product_name = st.text_input("Tên sản phẩm")
-    brand = st.text_input("Thương hiệu")
-    if st.button("💾 Lưu sản phẩm", type="primary"):
-        if barcode_input and product_name and brand:
-            product_sheet = connect_google_sheet(sheet_name, "Product_List")
-            if product_sheet:
-                if update_product(product_sheet, barcode_input, product_name, brand):
-                    st.success(f"✅ Đã lưu/cập nhật barcode: {barcode_input}")
-                    st.balloons()
+        else:  # Nhập thủ công
+            manual_barcode = st.text_input("Nhập mã barcode:", max_chars=20, value=st.session_state.temp_barcode or "")
+            if st.button("🔍 Tra cứu"):
+                if manual_barcode:
+                    st.session_state.barcode_data = manual_barcode
+                    product_sheet = connect_google_sheet(sheet_name, "Product_List")
+                    if product_sheet:
+                        st.session_state.scanned_product = lookup_product(manual_barcode, product_sheet)
+                        st.success(f"✅ Đã tra cứu barcode: {manual_barcode}")
+                        if st.session_state.scanned_product['name'] == 'Sản phẩm không xác định':
+                            st.markdown(
+                                f'<div class="warning-box">⚠️ Barcode <b>{manual_barcode}</b> chưa có trong Product_List. '
+                                'Vui lòng thêm sản phẩm trong tab "Cập nhật Barcode".</div>',
+                                unsafe_allow_html=True
+                            )
+                            if st.button("➕ Thêm sản phẩm này", type="primary"):
+                                st.session_state.temp_barcode = manual_barcode
+                                st.session_state.tab = "tab3"
+                                st.rerun()
+                    else:
+                        st.error("❌ Lỗi kết nối sheet Product_List!")
+                else:
+                    st.warning("⚠️ Vui lòng nhập mã barcode!")
+
+        if st.session_state.scanned_product and st.session_state.scanned_product['name'] != 'Sản phẩm không xác định':
+            st.markdown("---")
+            st.subheader("📦 Thông tin sản phẩm")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Tên sản phẩm", st.session_state.scanned_product['name'])
+            with col2:
+                st.metric("Thương hiệu", st.session_state.scanned_product['brand'])
+            st.info(f"🔢 Barcode: **{st.session_state.barcode_data}**")
+            st.markdown("---")
+            st.subheader("📝 Nhập số lượng")
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                quantity = st.number_input(
+                    "Số lượng:",
+                    min_value=0.0,
+                    step=0.1,
+                    format="%.2f"
+                )
+            with col2:
+                unit = st.selectbox(
+                    "Đơn vị:",
+                    ["ml", "L", "g", "kg", "cái", "hộp", "chai"]
+                )
+            st.markdown("---")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔄 Quét lại", use_container_width=True):
+                    st.session_state.scanned_product = None
+                    st.session_state.barcode_data = None
                     st.session_state.temp_barcode = None
-                    if st.session_state.barcode_data == barcode_input:
-                        st.session_state.scanned_product = {'name': product_name, 'brand': brand}
-                        st.session_state.tab = "tab1"
-                        st.rerun()
-                else:
-                    st.error("❌ Lỗi khi lưu sản phẩm!")
-            else:
-                st.error("❌ Lỗi kết nối sheet Product_List!")
-        else:
-            st.warning("⚠️ Vui lòng nhập đầy đủ thông tin!")
+                    st.rerun()
+            with col2:
+                if st.button("📤 Gửi lên Google Sheets", type="primary", use_container_width=True):
+                    if quantity > 0:
+                        data_sheet = connect_google_sheet(sheet_name, "Barcode_Data")
+                        if data_sheet:
+                            data = {
+                                'barcode': st.session_state.barcode_data,
+                                'product_name': st.session_state.scanned_product['name'],
+                                'brand': st.session_state.scanned_product['brand'],
+                                'quantity': quantity,
+                                'unit': unit,
+                                'timestamp': datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).strftime("%Y-%m-%d %H:%M:%S")
+                            }
+                            if send_to_google_sheet(data_sheet, data):
+                                st.success("✅ Đã gửi dữ liệu thành công!")
+                                st.balloons()
+                                st.session_state.scanned_product = None
+                                st.session_state.barcode_data = None
+                                st.session_state.temp_barcode = None
+                            else:
+                                st.error("❌ Gửi dữ liệu thất bại!")
+                        else:
+                            st.error("❌ Lỗi kết nối sheet Barcode_Data!")
+                    else:
+                        st.warning("⚠️ Vui lòng nhập số lượng > 0!")
 
-# Footer
-st.markdown("---")
-st.markdown(
-    "<div style='text-align: center; color: #666;'>Made with ❤️ using Streamlit</div>",
-    unsafe_allow_html=True
-)
+    with tab2:
+        st.subheader("📊 Dữ liệu đã lưu")
+        if st.button("🔄 Tải dữ liệu từ Google Sheets"):
+            data_sheet = connect_google_sheet(sheet_name, "Barcode_Data")
+            if data_sheet:
+                try:
+                    data = data_sheet.get_all_records()
+                    if data:
+                        df = pd.DataFrame(data)
+                        st.dataframe(df, use_container_width=True)
+                        st.markdown("---")
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Tổng số bản ghi", len(df))
+                        with col2:
+                            st.metric("Số sản phẩm", df['Barcode'].nunique())
+                        with col3:
+                            if 'Số lượng' in df.columns:
+                                total_qty = df['Số lượng'].sum()
+                                st.metric("Tổng số lượng", f"{total_qty:.2f}")
+                    else:
+                        st.info("📭 Chưa có dữ liệu nào!")
+                except Exception as e:
+                    st.error(f"Lỗi tải dữ liệu: {e}")
+
+    with tab3:
+        st.subheader("🛠 Cập nhật Barcode")
+        st.markdown("Nhập thông tin để thêm hoặc cập nhật sản phẩm vào Product_List.")
+        barcode_input = st.text_input("Mã Barcode", max_chars=20, value=st.session_state.temp_barcode or "")
+        product_name = st.text_input("Tên sản phẩm")
+        brand = st.text_input("Thương hiệu")
+        if st.button("💾 Lưu sản phẩm", type="primary"):
+            if barcode_input and product_name and brand:
+                product_sheet = connect_google_sheet(sheet_name, "Product_List")
+                if product_sheet:
+                    if update_product(product_sheet, barcode_input, product_name, brand):
+                        st.success(f"✅ Đã lưu/cập nhật barcode: {barcode_input}")
+                        st.balloons()
+                        st.session_state.temp_barcode = None
+                        if st.session_state.barcode_data == barcode_input:
+                            st.session_state.scanned_product = {'name': product_name, 'brand': brand}
+                            st.session_state.tab = "tab1"
+                            st.rerun()
+                    else:
+                        st.error("❌ Lỗi khi lưu sản phẩm!")
+                else:
+                    st.error("❌ Lỗi kết nối sheet Product_List!")
+            else:
+                st.warning("⚠️ Vui lòng nhập đầy đủ thông tin!")
+
+    # Footer
+    st.markdown("---")
+    st.markdown(
+        "<div style='text-align: center; color: #666;'>@Viva Star Coffee - 34B Đường Số 2, Lữ Gia, Quận 11</div>",
+        unsafe_allow_html=True
+    )
