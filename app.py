@@ -23,54 +23,56 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Khởi tạo session state tối giản
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-if 'scanned_product' not in st.session_state:
-    st.session_state.scanned_product = None
-if 'barcode_data' not in st.session_state:
-    st.session_state.barcode_data = None
-if 'last_image_hash' not in st.session_state:
-    st.session_state.last_image_hash = None
-if 'product_cache' not in st.session_state:
-    st.session_state.product_cache = None
-if 'form_key' not in st.session_state:
-    st.session_state.form_key = 0
+# Khởi tạo session state
+for key, default in {
+    'logged_in': False,
+    'scanned_product': None,
+    'barcode_data': None,
+    'last_image_hash': None,
+    'product_cache': None,
+    'client': None,
+    'sheet_name': 'Barcode_Data'
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 # Thông tin đăng nhập
 HARDCODED_USER = "admin@123"
 HARDCODED_PASS = "A@bcde6789"
 
-# ==================== CACHE FUNCTIONS ====================
+# ==================== LAZY CONNECTION ====================
 
-@st.cache_resource
-def get_google_sheet_client():
-    """Cache Google Sheets client - chỉ kết nối 1 lần"""
-    try:
-        scope = [
-            'https://www.googleapis.com/auth/spreadsheets',
-            'https://www.googleapis.com/auth/drive'
-        ]
-        if "gcp_service_account" in st.secrets:
-            creds = Credentials.from_service_account_info(
-                dict(st.secrets["gcp_service_account"]), scopes=scope
-            )
-        else:
-            creds = Credentials.from_service_account_file('credentials.json', scopes=scope)
-        return gspread.authorize(creds)
-    except Exception as e:
-        st.error(f"Lỗi kết nối: {e}")
-        return None
+def get_client():
+    """Lazy load Google Sheets client"""
+    if st.session_state.client is None:
+        try:
+            scope = [
+                'https://www.googleapis.com/auth/spreadsheets',
+                'https://www.googleapis.com/auth/drive'
+            ]
+            if "gcp_service_account" in st.secrets:
+                creds = Credentials.from_service_account_info(
+                    dict(st.secrets["gcp_service_account"]), scopes=scope
+                )
+            else:
+                creds = Credentials.from_service_account_file('credentials.json', scopes=scope)
+            st.session_state.client = gspread.authorize(creds)
+        except Exception as e:
+            st.error(f"Lỗi kết nối: {e}")
+            return None
+    return st.session_state.client
 
-def get_product_list_cached(client, sheet_name):
-    """Load product list VÀ cache trong session state"""
-    # Nếu đã có cache trong session, return luôn
+def load_products():
+    """Load products CHỈ 1 LẦN"""
     if st.session_state.product_cache is not None:
         return st.session_state.product_cache
     
-    # Nếu chưa có, load từ Google Sheets
+    client = get_client()
+    if not client:
+        return pd.DataFrame(columns=['Barcode', 'Tên SP', 'Thương hiệu'])
+    
     try:
-        spreadsheet = client.open(sheet_name)
+        spreadsheet = client.open(st.session_state.sheet_name)
         sheet = spreadsheet.worksheet("Product_List")
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
@@ -78,40 +80,12 @@ def get_product_list_cached(client, sheet_name):
             df['Barcode'] = df['Barcode'].astype(str).str.strip()
         st.session_state.product_cache = df
         return df
-    except gspread.exceptions.WorksheetNotFound:
-        df = pd.DataFrame(columns=['Barcode', 'Tên SP', 'Thương hiệu'])
-        st.session_state.product_cache = df
-        return df
-    except Exception as e:
-        st.error(f"Lỗi load Product_List: {e}")
+    except:
         df = pd.DataFrame(columns=['Barcode', 'Tên SP', 'Thương hiệu'])
         st.session_state.product_cache = df
         return df
 
-def get_worksheet(client, sheet_name, worksheet_name):
-    """Lấy worksheet, tạo nếu chưa có"""
-    try:
-        spreadsheet = client.open(sheet_name)
-        try:
-            return spreadsheet.worksheet(worksheet_name)
-        except gspread.exceptions.WorksheetNotFound:
-            sheet = spreadsheet.add_worksheet(title=worksheet_name, rows=100, cols=10)
-            if worksheet_name == "Barcode_Data":
-                sheet.append_row(["Barcode", "Tên SP", "Thương hiệu", "Số lượng", "Đơn vị", "Thời gian"])
-            elif worksheet_name == "Product_List":
-                sheet.append_row(["Barcode", "Tên SP", "Thương hiệu"])
-            return sheet
-    except Exception as e:
-        st.error(f"Lỗi worksheet: {e}")
-        return None
-
-# ==================== BARCODE SCANNING (GEMINI ONLY) ====================
-
-def get_image_hash(image):
-    """Tạo hash unique cho ảnh để phát hiện ảnh mới"""
-    img_bytes = io.BytesIO()
-    image.save(img_bytes, format='PNG')
-    return hash(img_bytes.getvalue())
+# ==================== BARCODE SCAN ====================
 
 def scan_barcode_gemini(image):
     """Quét barcode bằng Gemini AI"""
@@ -125,71 +99,76 @@ def scan_barcode_gemini(image):
         
         model = genai.GenerativeModel('gemini-2.0-flash')
         response = model.generate_content([
-            "Read the barcode number only. Return just the digits (e.g., '8935049502142'). If no barcode, return 'None'.",
+            "Read the barcode number only. Return just the digits. If no barcode, return 'None'.",
             {"mime_type": "image/png", "data": img_bytes}
         ])
         barcode_text = response.text.strip()
-        if barcode_text.lower() != 'none':
-            return barcode_text
-        return None
+        return None if barcode_text.lower() == 'none' else barcode_text
     except Exception as e:
-        st.error(f"Lỗi quét barcode: {e}")
+        st.error(f"Lỗi quét: {e}")
         return None
 
-# ==================== CORE FUNCTIONS ====================
-
-def lookup_product_fast(barcode, df):
-    """Tra cứu nhanh từ DataFrame đã cache"""
+def lookup_product(barcode, df):
+    """Tra cứu sản phẩm"""
     barcode = str(barcode).strip()
     match = df[df['Barcode'] == barcode]
     if not match.empty:
-        return {
-            'name': match.iloc[0]['Tên SP'],
-            'brand': match.iloc[0]['Thương hiệu']
-        }
+        return {'name': match.iloc[0]['Tên SP'], 'brand': match.iloc[0]['Thương hiệu']}
     return {'name': 'Sản phẩm không xác định', 'brand': 'N/A'}
 
-def update_product(client, sheet_name, barcode, product_name, brand):
-    """Cập nhật sản phẩm và clear cache"""
-    sheet = get_worksheet(client, sheet_name, "Product_List")
-    if not sheet:
+def send_to_sheet(data):
+    """Gửi dữ liệu"""
+    client = get_client()
+    if not client:
         return False
+    
     try:
-        sheet.append_row([str(barcode).strip(), product_name, brand])
-        # Clear cache trong session state
-        st.session_state.product_cache = None
-        return True
-    except Exception as e:
-        st.error(f"Lỗi: {e}")
-        return False
-
-def send_to_sheet(client, sheet_name, data):
-    """Gửi dữ liệu quét"""
-    sheet = get_worksheet(client, sheet_name, "Barcode_Data")
-    if not sheet:
-        return False
-    try:
-        row = [
+        spreadsheet = client.open(st.session_state.sheet_name)
+        try:
+            sheet = spreadsheet.worksheet("Barcode_Data")
+        except:
+            sheet = spreadsheet.add_worksheet(title="Barcode_Data", rows=100, cols=10)
+            sheet.append_row(["Barcode", "Tên SP", "Thương hiệu", "Số lượng", "Đơn vị", "Thời gian"])
+        
+        sheet.append_row([
             data['barcode'], data['product_name'], data['brand'],
             data['quantity'], data['unit'], data['timestamp']
-        ]
-        sheet.append_row(row)
+        ])
         return True
     except Exception as e:
-        st.error(f"Lỗi: {e}")
+        st.error(f"Lỗi gửi: {e}")
         return False
 
-def reset_scan_form():
-    """Reset toàn bộ form về trạng thái ban đầu"""
+def save_product(barcode, name, brand):
+    """Lưu sản phẩm mới"""
+    client = get_client()
+    if not client:
+        return False
+    
+    try:
+        spreadsheet = client.open(st.session_state.sheet_name)
+        try:
+            sheet = spreadsheet.worksheet("Product_List")
+        except:
+            sheet = spreadsheet.add_worksheet(title="Product_List", rows=100, cols=10)
+            sheet.append_row(["Barcode", "Tên SP", "Thương hiệu"])
+        
+        sheet.append_row([str(barcode).strip(), name, brand])
+        st.session_state.product_cache = None  # Clear cache
+        return True
+    except Exception as e:
+        st.error(f"Lỗi lưu: {e}")
+        return False
+
+def reset_form():
+    """Reset form"""
     st.session_state.scanned_product = None
     st.session_state.barcode_data = None
     st.session_state.last_image_hash = None
-    st.session_state.form_key += 1  # Force reset form inputs
 
 # ==================== AUTH ====================
 
 def check_login():
-    """Kiểm tra query params cho login"""
     logged_in = st.query_params.get("logged_in", None)
     if logged_in:
         try:
@@ -206,17 +185,16 @@ def logout():
     if "logged_in" in st.query_params:
         del st.query_params["logged_in"]
     st.session_state.logged_in = False
-    reset_scan_form()
+    st.session_state.client = None
     st.session_state.product_cache = None
+    reset_form()
     st.rerun()
 
 # ==================== MAIN APP ====================
 
-# Kiểm tra login từ query params
 if not st.session_state.logged_in:
     st.session_state.logged_in = check_login()
 
-# Form đăng nhập
 if not st.session_state.logged_in:
     st.title("🔒 Đăng Nhập")
     with st.form("login_form"):
@@ -233,225 +211,173 @@ if not st.session_state.logged_in:
                 st.error("❌ Sai thông tin đăng nhập!")
     st.stop()
 
-# ==================== APP CHÍNH ====================
+# ==================== LOGGED IN ====================
 
 st.title("📦 Viva Star Coffee - Kiểm Hàng")
 st.markdown("---")
 
-# Nút đăng xuất
 if st.button("🚪 Đăng xuất"):
     logout()
 
-# Sidebar
-with st.sidebar:
-    st.header("⚙️ Cấu hình")
-    sheet_name = st.text_input("Tên Google Sheet", value="Barcode_Data")
-
-# Kết nối Google Sheets (chỉ 1 lần)
-client = get_google_sheet_client()
-if not client:
-    st.error("❌ Không thể kết nối Google Sheets!")
-    st.stop()
-
-# Load Product_List CHỈ 1 LẦN - cache trong session state
-product_df = get_product_list_cached(client, sheet_name)
+# Load products (CHỈ 1 LẦN)
+product_df = load_products()
 
 # ==================== TABS ====================
 
 tab1, tab2, tab3 = st.tabs(["📸 Quét Barcode", "📊 Xem Dữ Liệu", "🛠 Cập nhật Barcode"])
 
-# ===== TAB 1: QUÉT BARCODE =====
+# ===== TAB 1 =====
 with tab1:
-    scan_method = st.radio(
-        "Phương thức quét:",
-        ["📷 Chụp ảnh", "📁 Upload ảnh", "⌨️ Nhập thủ công"],
-        horizontal=True,
-        key=f"scan_method_{st.session_state.form_key}"
-    )
+    scan_method = st.radio("Phương thức:", ["📷 Chụp", "📁 Upload", "⌨️ Nhập"], horizontal=True)
 
-    image = None
-    barcode = None
-    should_scan = False
-
-    if scan_method == "📷 Chụp ảnh":
-        camera_image = st.camera_input("Chụp ảnh barcode", key=f"camera_{st.session_state.form_key}")
+    # Quét barcode
+    if scan_method == "📷 Chụp":
+        camera_image = st.camera_input("Chụp ảnh")
         if camera_image:
             image = Image.open(camera_image)
-            current_hash = get_image_hash(image)
+            current_hash = hash(camera_image.getvalue())
             
-            # CHỈ QUÉT NẾU LÀ ẢNH MỚI
             if current_hash != st.session_state.last_image_hash:
                 st.session_state.last_image_hash = current_hash
-                should_scan = True
-            
-            st.image(image, caption="Ảnh đã chụp", use_container_width=True)
+                with st.spinner("🤖 Đang quét..."):
+                    barcode = scan_barcode_gemini(image)
+                    if barcode:
+                        st.session_state.barcode_data = barcode
+                        st.session_state.scanned_product = lookup_product(barcode, product_df)
+                        st.rerun()
 
-    elif scan_method == "📁 Upload ảnh":
-        uploaded_file = st.file_uploader("Chọn ảnh", type=['jpg', 'jpeg', 'png'], key=f"upload_{st.session_state.form_key}")
-        if uploaded_file:
-            image = Image.open(uploaded_file)
-            current_hash = get_image_hash(image)
+    elif scan_method == "📁 Upload":
+        uploaded = st.file_uploader("Chọn ảnh", type=['jpg', 'jpeg', 'png'])
+        if uploaded:
+            image = Image.open(uploaded)
+            current_hash = hash(uploaded.getvalue())
             
-            # CHỈ QUÉT NẾU LÀ ẢNH MỚI
             if current_hash != st.session_state.last_image_hash:
                 st.session_state.last_image_hash = current_hash
-                should_scan = True
-            
-            st.image(image, caption="Ảnh đã upload", use_column_width=True)
+                with st.spinner("🤖 Đang quét..."):
+                    barcode = scan_barcode_gemini(image)
+                    if barcode:
+                        st.session_state.barcode_data = barcode
+                        st.session_state.scanned_product = lookup_product(barcode, product_df)
+                        st.rerun()
 
     else:  # Nhập thủ công
-        manual_barcode = st.text_input("Nhập mã barcode:", max_chars=20, key=f"manual_{st.session_state.form_key}")
-        if st.button("🔍 Tra cứu", key=f"lookup_{st.session_state.form_key}"):
-            if manual_barcode:
-                barcode = manual_barcode
-                st.session_state.barcode_data = barcode
-                st.session_state.scanned_product = lookup_product_fast(barcode, product_df)
-                should_scan = False  # Không cần quét
+        manual = st.text_input("Nhập barcode:", max_chars=20)
+        if st.button("🔍 Tra cứu"):
+            if manual:
+                st.session_state.barcode_data = manual
+                st.session_state.scanned_product = lookup_product(manual, product_df)
+                st.rerun()
 
-    # Xử lý quét barcode CHỈ KHI CẦN
-    if should_scan and image:
-        with st.spinner("🤖 AI đang quét barcode..."):
-            barcode = scan_barcode_gemini(image)
-            if barcode:
-                st.session_state.barcode_data = barcode
-                st.session_state.scanned_product = lookup_product_fast(barcode, product_df)
-                st.rerun()  # Rerun để hiển thị form
-
-    # Hiển thị kết quả quét VÀ FORM NHẬP LIỆU
+    # Hiển thị form (nếu đã có barcode)
     if st.session_state.barcode_data and st.session_state.scanned_product:
         st.success(f"✅ Barcode: {st.session_state.barcode_data}")
         
         if st.session_state.scanned_product['name'] == 'Sản phẩm không xác định':
-            st.warning(f"⚠️ Barcode {st.session_state.barcode_data} chưa có. Vui lòng thêm trong tab 'Cập nhật Barcode'.")
-            
-            if st.button("🔄 Quét lại", key="rescan_unknown"):
-                reset_scan_form()
+            st.warning("⚠️ Chưa có sản phẩm. Vui lòng thêm trong tab 'Cập nhật'.")
+            if st.button("🔄 Quét lại"):
+                reset_form()
                 st.rerun()
         else:
-            # Form nhập liệu - DÙNG st.form ĐỂ TRÁNH RERUN
             st.markdown("---")
-            st.subheader("📦 Thông tin sản phẩm")
-            
             col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Tên", st.session_state.scanned_product['name'])
-            with col2:
-                st.metric("Thương hiệu", st.session_state.scanned_product['brand'])
-            
-            st.info(f"🔢 Barcode: **{st.session_state.barcode_data}**")
+            col1.metric("Tên", st.session_state.scanned_product['name'])
+            col2.metric("Thương hiệu", st.session_state.scanned_product['brand'])
             
             st.markdown("---")
             
-            # DÙNG FORM ĐỂ NGĂN RERUN KHI NHẬP LIỆU
-            with st.form(key=f"product_form_{st.session_state.form_key}", clear_on_submit=False):
+            # FORM - Không rerun khi nhập
+            with st.form("input_form"):
                 col1, col2 = st.columns([2, 1])
-                with col1:
-                    quantity = st.number_input("Số lượng:", min_value=0.0, step=0.1, format="%.2f", key=f"qty_{st.session_state.form_key}")
-                with col2:
-                    unit = st.selectbox("Đơn vị:", ["ml", "L", "g", "kg", "cái", "hộp", "chai"], key=f"unit_{st.session_state.form_key}")
+                qty = col1.number_input("Số lượng:", min_value=0.0, step=0.1, format="%.2f")
+                unit = col2.selectbox("Đơn vị:", ["ml", "L", "g", "kg", "cái", "hộp", "chai"])
                 
                 col1, col2 = st.columns(2)
-                with col1:
-                    rescan = st.form_submit_button("🔄 Quét lại", use_container_width=True)
-                with col2:
-                    submit = st.form_submit_button("📤 Gửi", type="primary", use_container_width=True)
+                rescan = col1.form_submit_button("🔄 Quét lại", use_container_width=True)
+                submit = col2.form_submit_button("📤 Gửi", type="primary", use_container_width=True)
                 
                 if rescan:
-                    reset_scan_form()
+                    reset_form()
                     st.rerun()
                 
                 if submit:
-                    if quantity > 0:
+                    if qty > 0:
                         data = {
                             'barcode': st.session_state.barcode_data,
                             'product_name': st.session_state.scanned_product['name'],
                             'brand': st.session_state.scanned_product['brand'],
-                            'quantity': quantity,
+                            'quantity': qty,
                             'unit': unit,
                             'timestamp': datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).strftime("%Y-%m-%d %H:%M:%S")
                         }
                         
-                        with st.spinner("Đang gửi..."):
-                            if send_to_sheet(client, sheet_name, data):
-                                st.success("✅ Đã gửi thành công!")
-                                st.balloons()
-                                # RESET TOÀN BỘ FORM
-                                reset_scan_form()
-                                st.rerun()
+                        if send_to_sheet(data):
+                            st.success("✅ Đã gửi!")
+                            st.balloons()
+                            reset_form()
+                            st.rerun()
                     else:
                         st.warning("⚠️ Nhập số lượng > 0!")
 
-# ===== TAB 2: XEM DỮ LIỆU =====
+# ===== TAB 2 =====
 with tab2:
     st.subheader("📊 Dữ liệu đã lưu")
     
     today = date.today()
     col1, col2 = st.columns(2)
-    with col1:
-        start_date = st.date_input("Từ ngày:", value=today)
-    with col2:
-        end_date = st.date_input("Đến ngày:", value=today)
+    start_date = col1.date_input("Từ ngày:", value=today)
+    end_date = col2.date_input("Đến ngày:", value=today)
     
     if st.button("🔄 Tải dữ liệu"):
-        sheet = get_worksheet(client, sheet_name, "Barcode_Data")
-        if sheet:
-            with st.spinner("Đang tải..."):
+        client = get_client()
+        if client:
+            try:
+                spreadsheet = client.open(st.session_state.sheet_name)
+                sheet = spreadsheet.worksheet("Barcode_Data")
                 data = sheet.get_all_records()
+                
                 if data:
                     df = pd.DataFrame(data)
-                    df['Thời gian'] = pd.to_datetime(df['Thời gian'], format='%Y-%m-%d %H:%M:%S', errors='coerce')
+                    df['Thời gian'] = pd.to_datetime(df['Thời gian'], errors='coerce')
                     df = df.dropna(subset=['Thời gian'])
                     
                     mask = (df['Thời gian'].dt.date >= start_date) & (df['Thời gian'].dt.date <= end_date)
-                    filtered_df = df[mask]
+                    filtered = df[mask]
                     
-                    if not filtered_df.empty:
-                        st.dataframe(filtered_df, use_container_width=True)
+                    if not filtered.empty:
+                        st.dataframe(filtered, use_container_width=True)
                         
                         col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Tổng bản ghi", len(filtered_df))
-                        with col2:
-                            st.metric("Số sản phẩm", filtered_df['Barcode'].nunique())
-                        with col3:
-                            st.metric("Tổng SL", f"{filtered_df['Số lượng'].sum():.2f}")
+                        col1.metric("Tổng bản ghi", len(filtered))
+                        col2.metric("Số sản phẩm", filtered['Barcode'].nunique())
+                        col3.metric("Tổng SL", f"{filtered['Số lượng'].sum():.2f}")
                         
-                        csv = filtered_df.to_csv(index=False)
-                        st.download_button(
-                            "📥 Tải CSV",
-                            csv,
-                            f"data_{start_date}_to_{end_date}.csv",
-                            "text/csv"
-                        )
+                        csv = filtered.to_csv(index=False)
+                        st.download_button("📥 Tải CSV", csv, f"data_{start_date}_{end_date}.csv", "text/csv")
                     else:
                         st.info("📭 Không có dữ liệu!")
                 else:
                     st.info("📭 Chưa có dữ liệu!")
+            except Exception as e:
+                st.error(f"Lỗi: {e}")
 
-# ===== TAB 3: CẬP NHẬT BARCODE =====
+# ===== TAB 3 =====
 with tab3:
     st.subheader("🛠 Cập nhật Barcode")
     
-    with st.form("update_barcode_form", clear_on_submit=True):
-        barcode_input = st.text_input("Mã Barcode", max_chars=20)
-        product_name = st.text_input("Tên sản phẩm")
-        brand = st.text_input("Thương hiệu")
+    with st.form("update_form"):
+        barcode_in = st.text_input("Mã Barcode", max_chars=20)
+        name_in = st.text_input("Tên sản phẩm")
+        brand_in = st.text_input("Thương hiệu")
+        save_btn = st.form_submit_button("💾 Lưu", type="primary")
         
-        submit = st.form_submit_button("💾 Lưu", type="primary")
-        
-        if submit:
-            if barcode_input and product_name and brand:
-                if update_product(client, sheet_name, barcode_input, product_name, brand):
-                    st.success(f"✅ Đã lưu: {barcode_input}")
+        if save_btn:
+            if barcode_in and name_in and brand_in:
+                if save_product(barcode_in, name_in, brand_in):
+                    st.success(f"✅ Đã lưu: {barcode_in}")
                     st.balloons()
-                else:
-                    st.error("❌ Lỗi!")
             else:
-                st.warning("⚠️ Nhập đầy đủ thông tin!")
+                st.warning("⚠️ Nhập đầy đủ!")
 
-# Footer
 st.markdown("---")
-st.markdown(
-    "<div style='text-align: center; color: #666;'>@2025 Viva Star Coffee</div>",
-    unsafe_allow_html=True
-)
+st.markdown("<div style='text-align: center; color: #666;'>@2025 Viva Star Coffee</div>", unsafe_allow_html=True)
