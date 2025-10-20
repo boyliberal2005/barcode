@@ -341,10 +341,15 @@ with tab1:
 with tab2:
     st.subheader("📊 Dữ liệu đã lưu")
     
+    # Luôn mặc định là ngày hiện tại
     today = date.today()
+    
     col1, col2 = st.columns(2)
-    start_date = col1.date_input("Từ ngày:", value=today)
-    end_date = col2.date_input("Đến ngày:", value=today)
+    with col1:
+        # Key unique để force reset về today mỗi khi chuyển tab
+        start_date = st.date_input("Từ ngày:", value=today, max_value=today)
+    with col2:
+        end_date = st.date_input("Đến ngày:", value=today, max_value=today)
     
     if st.button("🔄 Tải dữ liệu"):
         client = get_client()
@@ -372,7 +377,7 @@ with tab2:
                             col3.metric("Tổng SL", f"{filtered['Số lượng'].sum():.2f}")
                             
                             csv = filtered.to_csv(index=False)
-                            st.download_button("📥 Tải CSV", csv, f"data_{start_date}_{end_date}.csv", "text/csv")
+                            st.download_button("📥 Tải CSV", csv, f"data_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.csv", "text/csv")
                         else:
                             st.info("📭 Không có dữ liệu trong khoảng thời gian này!")
                     else:
