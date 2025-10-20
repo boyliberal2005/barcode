@@ -12,7 +12,7 @@ import google.generativeai as genai
 import io
 
 # Cấu hình Gemini API
-genai.configure(api_key=st.secrets.get("GEMINI_API_KEY", "your-local-api-key-for-testing"))
+genai.configure(api_key="AIzaSyA52qNG0pm7JD9E5Jhp_GhcwjdgXJd8sXQ")
 
 # Cấu hình trang
 st.set_page_config(
