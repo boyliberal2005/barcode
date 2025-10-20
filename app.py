@@ -90,6 +90,35 @@ def get_worksheet(_client, sheet_name, worksheet_name):
         st.error(f"Lỗi worksheet: {e}")
         return None
 
+# ==================== LAZY IMPORT ====================
+
+def scan_barcode_pyzbar(image):
+    """Lazy import pyzbar và cv2 chỉ khi cần"""
+    try:
+        import cv2
+        import numpy as np
+        from pyzbar import pyzbar
+        
+        img_array = np.array(image)
+        if len(img_array.shape) == 3:
+            gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+        else:
+            gray = img_array
+
+        barcodes = pyzbar.decode(gray)
+        if barcodes:
+            return barcodes[0].data.decode('utf-8')
+        
+        # Thử với tiền xử lý nếu không quét được
+        gray = cv2.GaussianBlur(gray, (5, 5), 0)
+        barcodes = pyzbar.decode(gray)
+        if barcodes:
+            return barcodes[0].data.decode('utf-8')
+        
+        return None
+    except Exception as e:
+        return None
+
 def scan_barcode_gemini(image):
     """Lazy import Gemini chỉ khi pyzbar thất bại"""
     try:
@@ -111,6 +140,14 @@ def scan_barcode_gemini(image):
         return None
     except Exception as e:
         return None
+
+def scan_barcode(image):
+    """Quét barcode: pyzbar trước, Gemini fallback"""
+    result = scan_barcode_pyzbar(image)
+    if result:
+        return result
+    with st.spinner("Dùng AI để quét..."):
+        return scan_barcode_gemini(image)
 
 # ==================== CORE FUNCTIONS ====================
 
