@@ -297,12 +297,5 @@ with tab3:
     - Cần cài libzbar0, libgl1, libglib2.0-0 trên hệ thống
     - Chụp ảnh barcode rõ nét, đủ sáng
     """)
-        ### 🚀 Bắt đầu nhanh
-        **Bước 1:** Thiết lập Google Sheets API
-        1. Làm theo hướng dẫn trong sidebar
-        2. Đặt credentials trong Streamlit secrets (cho Cloud) hoặc file credentials.json (local)
-        3. Tạo Google Sheet với header: Barcode | Tên SP | Thương hiệu | Số lượng | Đơn vị | Thời gian
-        
-        **Bước 2:** Chạy ứng dụng
         ```bash
         streamlit run app.py
