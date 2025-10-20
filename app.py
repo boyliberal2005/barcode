@@ -291,6 +291,12 @@ with tab2:
 with tab3:
     st.subheader("📖 Hướng dẫn sử dụng")
     st.markdown("""
+    ### 🚀 Bắt đầu nhanh
+    ...
+    ### 🔧 Lưu ý kỹ thuật
+    - Cần cài libzbar0, libgl1, libglib2.0-0 trên hệ thống
+    - Chụp ảnh barcode rõ nét, đủ sáng
+    """)
         ### 🚀 Bắt đầu nhanh
         **Bước 1:** Thiết lập Google Sheets API
         1. Làm theo hướng dẫn trong sidebar
