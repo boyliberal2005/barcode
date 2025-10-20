@@ -10,7 +10,7 @@ import pandas as pd
 import pytz
 import google.generativeai as genai
 import io
-import base64
+import base64  # Để mã hóa trạng thái đăng nhập đơn giản
 
 # Cấu hình Gemini API
 genai.configure(api_key="AIzaSyA52qNG0pm7JD9E5Jhp_GhcwjdgXJd8sXQ")
@@ -76,17 +76,17 @@ def check_login(username, password):
     """Kiểm tra thông tin đăng nhập"""
     return username == HARDCODED_USER and password == HARDCODED_PASS
 
-# Hàm lưu trạng thái đăng nhập vào query params
+# Hàm lưu trạng thái đăng nhập vào query params (để lưu sau refresh)
 def set_logged_in():
-    st.query_params.set({"logged_in": base64.b64encode(b"true").decode("utf-8")})
+    st.query_params["logged_in"] = base64.b64encode(b"true").decode("utf-8")
     st.session_state.logged_in = True
 
 # Hàm kiểm tra trạng thái đăng nhập từ query params
 def is_logged_in():
-    logged_in_param = st.query_params.get("logged_in")
-    if logged_in_param:
+    logged_in = st.query_params.get("logged_in", None)
+    if logged_in:
         try:
-            decoded = base64.b64decode(logged_in_param).decode("utf-8")
+            decoded = base64.b64decode(logged_in).decode("utf-8")
             return decoded == "true"
         except:
             return False
@@ -94,7 +94,8 @@ def is_logged_in():
 
 # Hàm logout và xóa query params
 def logout():
-    st.query_params.clear()
+    if "logged_in" in st.query_params:
+        del st.query_params["logged_in"]
     st.session_state.logged_in = False
     st.session_state.scanned_product = None
     st.session_state.barcode_data = None
@@ -454,13 +455,13 @@ else:
                     min_value=0.0,
                     step=0.1,
                     format="%.2f",
-                    value=0.0  # Reset mặc định
+                    value=0.0  # Reset số lượng mặc định
                 )
             with col2:
                 unit = st.selectbox(
                     "Đơn vị:",
                     ["ml", "L", "g", "kg", "cái", "hộp", "chai"],
-                    index=0  # Reset về giá trị đầu tiên
+                    index=0  # Reset đơn vị mặc định
                 )
             st.markdown("---")
             col1, col2 = st.columns(2)
@@ -490,7 +491,7 @@ else:
                                 st.session_state.scanned_product = None
                                 st.session_state.barcode_data = None
                                 st.session_state.temp_barcode = None
-                                st.rerun()
+                                st.rerun()  # Làm mới app để reset form
                             else:
                                 st.error("❌ Gửi dữ liệu thất bại!")
                         else:
@@ -520,6 +521,7 @@ else:
                         if 'Thời gian' in df.columns:
                             # Chuyển cột Thời gian thành datetime
                             df['Thời gian'] = pd.to_datetime(df['Thời gian'], format='%Y-%m-%d %H:%M:%S', errors='coerce')
+                            # Loại bỏ các hàng có thời gian không hợp lệ
                             df = df.dropna(subset=['Thời gian'])
                             # Lọc theo khoảng thời gian
                             mask = (df['Thời gian'].dt.date >= start_date) & (df['Thời gian'].dt.date <= end_date)
