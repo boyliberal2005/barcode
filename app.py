@@ -12,7 +12,8 @@ import google.generativeai as genai
 import io
 
 # Cấu hình Gemini API
-genai.configure(api_key="AIzaSyA52qNG0pm7JD9E5Jhp_GhcwjdgXJd8sXQ")
+genai.configure(api_key=st.secrets.get("GEMINI_API_KEY", "your-local-api-key-for-testing"))
+
 # Cấu hình trang
 st.set_page_config(
     page_title="Quét Barcode",
@@ -63,7 +64,7 @@ st.markdown("---")
 
 # Hàm kết nối Google Sheets
 def connect_google_sheet(sheet_name, worksheet_name):
-    """Kết nối với Google Sheets và trả về worksheet"""
+    """Kết nối với Google Sheets và trả về worksheet, tạo nếu chưa tồn tại"""
     try:
         scope = [
             'https://www.googleapis.com/auth/spreadsheets',
@@ -76,8 +77,23 @@ def connect_google_sheet(sheet_name, worksheet_name):
         else:
             creds = Credentials.from_service_account_file('credentials.json', scopes=scope)
         client = gspread.authorize(creds)
-        sheet = client.open(sheet_name).worksheet(worksheet_name)
+        spreadsheet = client.open(sheet_name)
+        
+        # Kiểm tra worksheet tồn tại
+        try:
+            sheet = spreadsheet.worksheet(worksheet_name)
+        except gspread.exceptions.WorksheetNotFound:
+            st.warning(f"Worksheet '{worksheet_name}' không tồn tại. Đang tạo mới...")
+            sheet = spreadsheet.add_worksheet(title=worksheet_name, rows=100, cols=10)
+            # Thêm header tùy theo worksheet
+            if worksheet_name == "Barcode_Data":
+                sheet.append_row(["Barcode", "Tên SP", "Thương hiệu", "Số lượng", "Đơn vị", "Thời gian"])
+            elif worksheet_name == "Product_List":
+                sheet.append_row(["Barcode", "Tên SP", "Thương hiệu"])
         return sheet
+    except gspread.exceptions.SpreadsheetNotFound:
+        st.error(f"Sheet '{sheet_name}' không tồn tại. Vui lòng tạo sheet với tên chính xác!")
+        return None
     except Exception as e:
         st.error(f"Lỗi kết nối Google Sheets ({worksheet_name}): {e}")
         return None
@@ -169,18 +185,15 @@ def lookup_product(barcode, sheet):
 def update_product(sheet, barcode, product_name, brand):
     """Thêm hoặc cập nhật sản phẩm trong Google Sheet"""
     try:
-        # Kiểm tra xem barcode đã tồn tại chưa
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
         if not df.empty and 'Barcode' in df.columns:
             match = df[df['Barcode'] == barcode]
             if not match.empty:
-                # Cập nhật hàng hiện có
-                row_index = match.index[0] + 2  # +2 vì header ở hàng 1, index bắt đầu từ 0
+                row_index = match.index[0] + 2
                 sheet.update_cell(row_index, 2, product_name)
                 sheet.update_cell(row_index, 3, brand)
                 return True
-        # Thêm hàng mới
         sheet.append_row([barcode, product_name, brand])
         return True
     except Exception as e:
@@ -230,8 +243,9 @@ with st.sidebar:
             4. Share Google Sheet với email từ service account
             
             **Bước 3:** Cấu hình Sheet
-            - Tạo sheet "Barcode_Data" với header: Barcode, Tên SP, Thương hiệu, Số lượng, Đơn vị, Thời gian
-            - Tạo sheet "Product_List" với header: Barcode, Tên SP, Thương hiệu
+            - Tạo sheet "Barcode_Data" với hai worksheet:
+              - "Barcode_Data": Header: Barcode, Tên SP, Thương hiệu, Số lượng, Đơn vị, Thời gian
+              - "Product_List": Header: Barcode, Tên SP, Thương hiệu
         """)
 
 # Main content
