@@ -1,4 +1,4 @@
-import streamlit as st  # Ensure this is the first line
+import streamlit as st
 from PIL import Image
 import gspread
 from google.oauth2.service_account import Credentials
@@ -68,6 +68,12 @@ st.markdown("""
         .stSelectbox > div > div {
             padding: 12px !important;
             border-radius: 8px !important;
+            min-height: 48px !important; /* Ensure touch-friendly height */
+            line-height: 1.5 !important; /* Improve text alignment */
+        }
+        .stSelectbox [data-testid="stSelectbox"] div {
+            color: #000 !important; /* Force text visibility */
+            background-color: #fff !important; /* Ensure background is visible */
         }
         .stNumberInput input {
             padding: 12px !important;
@@ -112,7 +118,8 @@ defaults = {
     'just_sent': False,
     'pending_confirm': False,
     'scanned_image': None,
-    'camera_key': 0
+    'camera_key': 0,
+    'reset_alphabet': False  # New key for filter reset
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -246,7 +253,7 @@ def save_product(barcode, name, brand):
         )
         if sheet:
             sheet.append_row([str(barcode).strip(), name, brand])
-            st.session_state.products_df = None  # Clear cache
+            st.session_state.products_df = None
             return True
     except Exception as e:
         st.error(f"❌ Lỗi lưu: {e}")
@@ -589,16 +596,22 @@ with tab2:
                     products_df['Thương hiệu'].str.lower().str.contains(search_query, na=False)
                 ]
         elif search_method == "Lọc theo chữ cái":
-            # Fix: Move button and reset logic BEFORE the selectbox
-            if st.button("🗑️ Xóa bộ lọc", use_container_width=True, key="clear_filter"):
+            # Fix: Use callback for reset to avoid state conflict
+            def reset_alphabet_filter():
+                st.session_state.reset_alphabet = True
                 if "alphabet_select" in st.session_state:
                     del st.session_state["alphabet_select"]
                 st.rerun()
+
+            if st.button("🗑️ Xóa bộ lọc", use_container_width=True, key="clear_filter", on_click=reset_alphabet_filter):
+                pass  # Callback handles the reset
+
             alphabet = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
                         'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0-9']
-            # Set default if not in session state
-            if "alphabet_select" not in st.session_state:
+            # Initialize default value if not set
+            if "alphabet_select" not in st.session_state or st.session_state.reset_alphabet:
                 st.session_state["alphabet_select"] = "Tất cả"
+                st.session_state.reset_alphabet = False  # Reset flag after use
             selected_letter = st.selectbox(
                 "🔤 Chọn chữ cái đầu",
                 ["Tất cả"] + alphabet,
@@ -621,6 +634,9 @@ with tab2:
             product_options = filtered_products.apply(
                 lambda x: f"{x['Tên SP']} ({x['Barcode']})", axis=1
             ).tolist()
+            # Initialize product select default
+            if "product_select" not in st.session_state:
+                st.session_state["product_select"] = product_options[0] if product_options else None
             selected_product = st.selectbox(
                 "📦 Chọn sản phẩm",
                 options=product_options,
@@ -651,7 +667,7 @@ with tab2:
                         help="Nhập số lượng sản phẩm",
                         key="qty_input"
                     )
-                    # Set default for unit if not in session state
+                    # Fix: Ensure unit selectbox always has a visible default
                     if "unit_select" not in st.session_state:
                         st.session_state["unit_select"] = "cái"
                     unit = st.selectbox(
@@ -675,13 +691,11 @@ with tab2:
                                 if save_scan(data):
                                     st.success(f"✅ Đã nhập kho: **{product_info['Tên SP']}** - **{qty} {unit}**")
                                     st.balloons()
-                                    # Fix: Explicitly reset form widget states after success
-                                    if "qty_input" in st.session_state:
-                                        del st.session_state["qty_input"]
-                                    if "unit_select" in st.session_state:
-                                        del st.session_state["unit_select"]
-                                    if "product_select" in st.session_state:
-                                        del st.session_state["product_select"]
+                                    # Reset all form-related states
+                                    for key in ["qty_input", "unit_select", "product_select"]:
+                                        if key in st.session_state:
+                                            del st.session_state[key]
+                                    st.rerun()
                                 else:
                                     st.error("❌ Lỗi lưu dữ liệu. Vui lòng thử lại!")
                         else:
