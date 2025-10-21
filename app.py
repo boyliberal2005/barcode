@@ -338,56 +338,120 @@ with tab1:
     
     # Camera mode
     if scan_mode == "📷 Camera":
-        st.info("""
-        📸 **Hướng dẫn chụp barcode:**
-        - 📏 Giữ điện thoại cách barcode 15-20cm
-        - 💡 Đảm bảo đủ ánh sáng
-        - 📐 Giữ điện thoại song song với barcode
-        - 🎯 Đưa barcode vào giữa khung hình
-        """)
+        # Hướng dẫn nổi bật
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    padding: 1.5rem; border-radius: 16px; margin-bottom: 1rem;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);'>
+            <h3 style='color: white; margin: 0 0 1rem 0; text-align: center;'>📸 Hướng Dẫn Chụp Barcode</h3>
+            <div style='background: rgba(255,255,255,0.2); padding: 1rem; border-radius: 12px;'>
+                <p style='color: white; margin: 0.5rem 0; font-size: 1.1em;'>📏 <strong>Khoảng cách:</strong> 15-20cm (bằng gang tay)</p>
+                <p style='color: white; margin: 0.5rem 0; font-size: 1.1em;'>💡 <strong>Ánh sáng:</strong> Đủ sáng, không bị bóng</p>
+                <p style='color: white; margin: 0.5rem 0; font-size: 1.1em;'>📐 <strong>Góc chụp:</strong> Song song với barcode</p>
+                <p style='color: white; margin: 0.5rem 0; font-size: 1.1em;'>🎯 <strong>Vị trí:</strong> Barcode ở giữa khung hình</p>
+            </div>
+            <div style='background: #FFD700; color: #000; padding: 1rem; border-radius: 12px; margin-top: 1rem; text-align: center;'>
+                <p style='margin: 0; font-size: 1.2em; font-weight: bold;'>👇 NHẤN NÚT TRÒN MÀU XANH BÊN DƯỚI ĐỂ CHỤP 👇</p>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         
-        # CSS cho camera to hơn trên mobile
+        # CSS cải thiện camera và nút chụp
         st.markdown("""
         <style>
-        /* Tăng kích thước camera trên mobile */
+        /* Container camera */
         [data-testid="stCameraInput"] {
             width: 100% !important;
+            position: relative !important;
         }
+        
+        /* Video stream to hơn */
         [data-testid="stCameraInput"] video {
             width: 100% !important;
-            height: 70vh !important;
-            max-height: 600px !important;
+            height: 65vh !important;
+            max-height: 550px !important;
             object-fit: cover !important;
-            border-radius: 16px !important;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.2) !important;
+            border-radius: 20px !important;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3) !important;
+            border: 4px solid #4CAF50 !important;
         }
-        /* Image preview cũng lớn */
+        
+        /* Image preview */
         [data-testid="stCameraInput"] img {
             width: 100% !important;
             height: auto !important;
-            max-height: 600px !important;
+            max-height: 550px !important;
             object-fit: contain !important;
-            border-radius: 16px !important;
-        }
-        /* Nút chụp lớn hơn và dễ nhìn */
-        [data-testid="stCameraInput"] button {
-            height: 70px !important;
-            width: 70px !important;
-            border-radius: 50% !important;
-            background: #4CAF50 !important;
-            border: 5px solid white !important;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
-        }
-        /* Container của camera */
-        [data-testid="stCameraInput"] > div {
-            background: rgba(0,0,0,0.05) !important;
             border-radius: 20px !important;
-            padding: 10px !important;
+            border: 4px solid #4CAF50 !important;
+        }
+        
+        /* NÚT CHỤP - TO HƠN VÀ DỄ NHẤN HƠN */
+        [data-testid="stCameraInput"] button {
+            height: 80px !important;
+            width: 80px !important;
+            border-radius: 50% !important;
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%) !important;
+            border: 6px solid white !important;
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.5) !important;
+            position: relative !important;
+            z-index: 1000 !important;
+            cursor: pointer !important;
+            transition: all 0.3s ease !important;
+        }
+        
+        /* Hiệu ứng khi hover */
+        [data-testid="stCameraInput"] button:hover {
+            transform: scale(1.1) !important;
+            box-shadow: 0 8px 30px rgba(76, 175, 80, 0.7) !important;
+        }
+        
+        /* Hiệu ứng khi nhấn */
+        [data-testid="stCameraInput"] button:active {
+            transform: scale(0.95) !important;
+        }
+        
+        /* Container của nút chụp - ĐẶT Ở DƯỚI KHUNG HÌNH */
+        [data-testid="stCameraInput"] > div > div:last-child {
+            position: relative !important;
+            bottom: auto !important;
+            margin-top: 20px !important;
+            padding: 20px !important;
+            background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%) !important;
+            border-radius: 16px !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+        }
+        
+        /* Thêm animation nhấp nháy cho nút */
+        @keyframes pulse {
+            0%, 100% { 
+                box-shadow: 0 6px 20px rgba(76, 175, 80, 0.5);
+            }
+            50% { 
+                box-shadow: 0 6px 30px rgba(76, 175, 80, 0.8);
+            }
+        }
+        
+        [data-testid="stCameraInput"] button {
+            animation: pulse 2s infinite !important;
+        }
+        
+        /* Label camera */
+        [data-testid="stCameraInput"] label {
+            font-size: 1.3em !important;
+            font-weight: bold !important;
+            color: #4CAF50 !important;
+            text-align: center !important;
+            margin-bottom: 1rem !important;
+            display: block !important;
         }
         </style>
         """, unsafe_allow_html=True)
         
-        cam = st.camera_input("📸 Nhấn để chụp", label_visibility="visible", key=f"camera_{st.session_state.camera_key}")
+        cam = st.camera_input("📸 SẴN SÀNG? NHẤN NÚT TRÒN XANH BÊN DƯỚI!", label_visibility="visible", key=f"camera_{st.session_state.camera_key}")
         
         if cam:
             h = hash(cam.getvalue())
