@@ -727,8 +727,7 @@ st.markdown("---")
 st.markdown(
     """
     <div style='text-align: center; color: rgba(0,0,0,0.8); background: rgba(0,0,0,0.05); padding: 1.5rem; border-radius: 12px;'>
-        <p style='margin: 0; font-weight: 600; color: #000;'>🌟 <strong>Viva Star Coffee</strong> - Hệ thống kiểm hàng thông minh</p>
-        <p style='margin: 0.5rem 0 0 0; font-size: 0.9em; color: rgba(0,0,0,0.6);'>© 2025 - Powered by AI Technology</p>
+        <p style='margin: 0; font-weight: 600; color: #000;'>🌟 <strong>@2025 Viva Star Coffee 34B Đường Số 02, Cư Xá Lữ Gia</strong></p>
     </div>
     """,
     unsafe_allow_html=True
