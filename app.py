@@ -342,6 +342,47 @@ with tab1:
         - 🎯 Đưa barcode vào giữa khung hình
         """)
         
+        # CSS cho camera to hơn trên mobile
+        st.markdown("""
+        <style>
+        /* Tăng kích thước camera trên mobile */
+        [data-testid="stCameraInput"] {
+            width: 100% !important;
+        }
+        [data-testid="stCameraInput"] video {
+            width: 100% !important;
+            height: 70vh !important;
+            max-height: 600px !important;
+            object-fit: cover !important;
+            border-radius: 16px !important;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2) !important;
+        }
+        /* Image preview cũng lớn */
+        [data-testid="stCameraInput"] img {
+            width: 100% !important;
+            height: auto !important;
+            max-height: 600px !important;
+            object-fit: contain !important;
+            border-radius: 16px !important;
+        }
+        /* Nút chụp lớn hơn và dễ nhìn */
+        [data-testid="stCameraInput"] button {
+            height: 70px !important;
+            width: 70px !important;
+            border-radius: 50% !important;
+            background: #4CAF50 !important;
+            border: 5px solid white !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+        }
+        /* Container của camera */
+        [data-testid="stCameraInput"] > div {
+            background: rgba(0,0,0,0.05) !important;
+            border-radius: 20px !important;
+            padding: 10px !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
         cam = st.camera_input("📸 Nhấn để chụp", label_visibility="visible")
         
         if cam:
