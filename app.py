@@ -76,7 +76,8 @@ defaults = {
     'sheet_name': 'Barcode_Data',
     'just_sent': False,
     'pending_confirm': False,
-    'scanned_image': None
+    'scanned_image': None,
+    'camera_key': 0
 }
 
 for k, v in defaults.items():
@@ -244,6 +245,7 @@ def reset():
     st.session_state.just_sent = False
     st.session_state.pending_confirm = False
     st.session_state.scanned_image = None
+    st.session_state.camera_key += 1  # Tăng key để force reset camera
 
 # ==================== AUTH ====================
 
@@ -385,7 +387,7 @@ with tab1:
         </style>
         """, unsafe_allow_html=True)
         
-        cam = st.camera_input("📸 Nhấn để chụp", label_visibility="visible")
+        cam = st.camera_input("📸 Nhấn để chụp", label_visibility="visible", key=f"camera_{st.session_state.camera_key}")
         
         if cam:
             h = hash(cam.getvalue())
