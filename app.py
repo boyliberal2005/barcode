@@ -560,7 +560,7 @@ with tab1:
                     else:
                         st.warning("⚠️ Số lượng phải lớn hơn 0!")
 
-# ===== TAB 2: NHẬP KHO =====
+# ===== TAB 2: NHẬP KHO ===== (Fixed Version)
 with tab2:
     st.subheader("📦 Nhập Kho")
     st.caption("Chọn sản phẩm và nhập số lượng để lưu kho")
@@ -589,11 +589,17 @@ with tab2:
                     products_df['Thương hiệu'].str.lower().str.contains(search_query, na=False)
                 ]
         elif search_method == "Lọc theo chữ cái":
+            # Fix: Move button and reset logic BEFORE the selectbox
+            if st.button("🗑️ Xóa bộ lọc", use_container_width=True, key="clear_filter"):
+                if "alphabet_select" in st.session_state:
+                    del st.session_state["alphabet_select"]
+                st.rerun()
             alphabet = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
                         'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0-9']
             selected_letter = st.selectbox(
                 "🔤 Chọn chữ cái đầu",
                 ["Tất cả"] + alphabet,
+                index=0,  # Fix: Default to first option for reliable reset
                 help="Chọn chữ cái để lọc sản phẩm",
                 key="alphabet_select"
             )
@@ -606,11 +612,8 @@ with tab2:
                     filtered_products = products_df[
                         products_df['Tên SP'].str.upper().str.startswith(selected_letter, na=False)
                     ]
-            if st.button("🗑️ Xóa bộ lọc", use_container_width=True, key="clear_filter"):
-                st.session_state["alphabet_select"] = "Tất cả"
-                st.rerun()
         if filtered_products.empty:
-            st.info("📭 Không tìm thấy sản phẩm nào")
+            st.info("📭 Không tìm thấy sản phẩm nào. Hãy thử tìm kiếm khác hoặc thêm sản phẩm mới!")
         else:
             st.success(f"✅ Tìm thấy **{len(filtered_products)}** sản phẩm")
             product_options = filtered_products.apply(
@@ -649,6 +652,7 @@ with tab2:
                     unit = st.selectbox(
                         "Đơn vị",
                         ["cái", "hộp", "chai", "kg", "g", "L", "ml"],
+                        index=0,  # Fix: Default to first option to prevent blank display
                         help="Chọn đơn vị tính",
                         key="unit_select"
                     )
@@ -667,6 +671,13 @@ with tab2:
                                 if save_scan(data):
                                     st.success(f"✅ Đã nhập kho: **{product_info['Tên SP']}** - **{qty} {unit}**")
                                     st.balloons()
+                                    # Fix: Explicitly reset form widget states after success
+                                    if "qty_input" in st.session_state:
+                                        del st.session_state["qty_input"]
+                                    if "unit_select" in st.session_state:
+                                        del st.session_state["unit_select"]
+                                    if "product_select" in st.session_state:
+                                        del st.session_state["product_select"]
                                 else:
                                     st.error("❌ Lỗi lưu dữ liệu. Vui lòng thử lại!")
                         else:
