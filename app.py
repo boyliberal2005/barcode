@@ -323,7 +323,7 @@ if st.session_state.just_sent:
 
 # ==================== TABS ====================
 
-tab1, tab2, tab3 = st.tabs(["📸 Quét Mã", "📊 Dữ Liệu", "➕ Thêm SP"])
+tab1, tab2, tab3, tab4 = st.tabs(["📸 Quét Mã", "📦 Nhập Kho", "📊 Dữ Liệu", "➕ Thêm SP"])
 
 # ===== TAB 1: SCAN =====
 with tab1:
@@ -625,8 +625,155 @@ with tab1:
                     else:
                         st.warning("⚠️ Số lượng phải lớn hơn 0!")
 
-# ===== TAB 2: DATA =====
+# ===== TAB 2: NHẬP KHO =====
 with tab2:
+    st.subheader("📦 Nhập Kho")
+    st.caption("Chọn sản phẩm từ danh sách và nhập số lượng")
+    
+    if products_df.empty or len(products_df) == 0:
+        st.warning("⚠️ Chưa có sản phẩm nào trong hệ thống. Vui lòng thêm sản phẩm ở tab 'Thêm SP'")
+    else:
+        # Search method selector
+        search_method = st.radio(
+            "Chọn cách tìm kiếm:",
+            ["🔍 Tìm kiếm", "🔤 Chữ cái", "📋 Tất cả"],
+            horizontal=True,
+            label_visibility="collapsed"
+        )
+        
+        st.markdown("---")
+        
+        filtered_products = products_df.copy()
+        
+        # Search mode
+        if search_method == "🔍 Tìm kiếm":
+            search_query = st.text_input(
+                "🔍 Tìm kiếm sản phẩm",
+                placeholder="Nhập tên sản phẩm hoặc barcode...",
+                help="Gõ tên hoặc mã barcode để tìm"
+            )
+            
+            if search_query:
+                search_query = search_query.lower().strip()
+                filtered_products = products_df[
+                    products_df['Tên SP'].str.lower().str.contains(search_query, na=False) |
+                    products_df['Barcode'].str.lower().str.contains(search_query, na=False) |
+                    products_df['Thương hiệu'].str.lower().str.contains(search_query, na=False)
+                ]
+        
+        # Alphabet mode
+        elif search_method == "🔤 Chữ cái":
+            st.markdown("**Chọn chữ cái đầu:**")
+            
+            # Create alphabet buttons
+            alphabet = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 
+                       'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0-9']
+            
+            cols = st.columns(7)
+            selected_letter = None
+            
+            for idx, letter in enumerate(alphabet):
+                col_idx = idx % 7
+                with cols[col_idx]:
+                    if st.button(letter, key=f"letter_{letter}", use_container_width=True):
+                        selected_letter = letter
+            
+            if selected_letter:
+                st.info(f"📝 Hiển thị sản phẩm bắt đầu bằng: **{selected_letter}**")
+                
+                if selected_letter == '0-9':
+                    # Filter products starting with numbers
+                    filtered_products = products_df[
+                        products_df['Tên SP'].str[0].str.match(r'^\d', na=False)
+                    ]
+                else:
+                    # Filter products starting with selected letter
+                    filtered_products = products_df[
+                        products_df['Tên SP'].str.upper().str.startswith(selected_letter, na=False)
+                    ]
+        
+        # Display results
+        st.markdown("---")
+        
+        if filtered_products.empty:
+            st.info("📭 Không tìm thấy sản phẩm nào")
+        else:
+            st.success(f"✅ Tìm thấy **{len(filtered_products)}** sản phẩm")
+            
+            # Product selector
+            product_options = filtered_products.apply(
+                lambda x: f"{x['Tên SP']} - {x['Thương hiệu']} ({x['Barcode']})", axis=1
+            ).tolist()
+            
+            selected_product = st.selectbox(
+                "📦 Chọn sản phẩm:",
+                options=product_options,
+                help="Chọn sản phẩm để nhập kho"
+            )
+            
+            if selected_product:
+                # Extract barcode from selection
+                selected_barcode = selected_product.split('(')[-1].rstrip(')')
+                product_info = filtered_products[filtered_products['Barcode'] == selected_barcode].iloc[0]
+                
+                # Display product info
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("📦 Tên sản phẩm", product_info['Tên SP'])
+                with col2:
+                    st.metric("🏷️ Thương hiệu", product_info['Thương hiệu'])
+                
+                st.info(f"📊 Barcode: **{product_info['Barcode']}**")
+                
+                st.markdown("---")
+                
+                # Input form
+                with st.form("warehouse_input_form", clear_on_submit=True):
+                    st.subheader("📝 Nhập thông tin nhập kho")
+                    
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        qty = st.number_input(
+                            "Số lượng",
+                            min_value=0.0,
+                            step=0.1,
+                            format="%.2f",
+                            value=1.0,
+                            help="Nhập số lượng sản phẩm"
+                        )
+                    with col2:
+                        unit = st.selectbox(
+                            "Đơn vị",
+                            ["cái", "hộp", "chai", "kg", "g", "L", "ml"],
+                            help="Chọn đơn vị tính"
+                        )
+                    
+                    st.markdown("---")
+                    
+                    submit = st.form_submit_button("✅ Xác nhận & Lưu", type="primary", use_container_width=True)
+                    
+                    if submit:
+                        if qty > 0:
+                            data = {
+                                'barcode': product_info['Barcode'],
+                                'name': product_info['Tên SP'],
+                                'brand': product_info['Thương hiệu'],
+                                'qty': qty,
+                                'unit': unit,
+                                'time': datetime.now(VN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+                            }
+                            
+                            with st.spinner("⏳ Đang lưu dữ liệu..."):
+                                if save_scan(data):
+                                    st.success(f"✅ Đã nhập kho: **{product_info['Tên SP']}** - Số lượng: **{qty} {unit}**")
+                                    st.balloons()
+                                else:
+                                    st.error("❌ Không thể lưu. Vui lòng thử lại!")
+                        else:
+                            st.warning("⚠️ Số lượng phải lớn hơn 0!")
+
+# ===== TAB 3: DATA =====
+with tab3:
     st.subheader("📊 Dữ liệu đã quét")
     
     today = datetime.now(VN_TZ).date()
@@ -682,8 +829,8 @@ with tab2:
                 except Exception as e:
                     st.error(f"❌ Lỗi: {e}")
 
-# ===== TAB 3: ADD PRODUCT =====
-with tab3:
+# ===== TAB 4: ADD PRODUCT =====
+with tab4:
     st.subheader("➕ Thêm sản phẩm mới")
     st.caption("Thêm thông tin sản phẩm cho barcode chưa có trong hệ thống")
     
