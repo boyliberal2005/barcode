@@ -75,7 +75,8 @@ defaults = {
     'client': None,
     'sheet_name': 'Barcode_Data',
     'just_sent': False,
-    'pending_confirm': False
+    'pending_confirm': False,
+    'scanned_image': None
 }
 
 for k, v in defaults.items():
@@ -242,6 +243,7 @@ def reset():
     st.session_state.img_hash = None
     st.session_state.just_sent = False
     st.session_state.pending_confirm = False
+    st.session_state.scanned_image = None
 
 # ==================== AUTH ====================
 
@@ -397,6 +399,10 @@ with tab1:
                     # Ảnh mới, xử lý quét
                     st.session_state.img_hash = h
                     img = Image.open(cam)
+                    
+                    # Lưu ảnh vào session state
+                    st.session_state.scanned_image = img
+                    
                     st.image(img, caption="✅ Ảnh đã chụp", use_container_width=True)
                     
                     with st.spinner("🤖 AI đang quét barcode..."):
@@ -442,6 +448,10 @@ with tab1:
                 else:
                     st.session_state.img_hash = h
                     img = Image.open(upload)
+                    
+                    # Lưu ảnh vào session state
+                    st.session_state.scanned_image = img
+                    
                     st.image(img, caption="Ảnh đã chọn", use_container_width=True)
                     
                     with st.spinner("🤖 AI đang quét..."):
@@ -472,6 +482,12 @@ with tab1:
     # Show product form - QUAN TRỌNG: Phải nằm ngoài các điều kiện scan_mode
     if st.session_state.barcode and st.session_state.product and not st.session_state.pending_confirm:
         st.markdown("---")
+        
+        # Hiển thị ảnh đã quét nếu có
+        if st.session_state.scanned_image:
+            st.image(st.session_state.scanned_image, caption="📸 Ảnh đã quét", use_container_width=True)
+            st.markdown("---")
+        
         st.success(f"✅ **Mã vạch đã quét:** {st.session_state.barcode}")
         
         if st.session_state.product['name'] == 'Chưa có thông tin':
@@ -648,9 +664,9 @@ with tab3:
 st.markdown("---")
 st.markdown(
     """
-    <div style='text-align: center; color: rgba(255,255,255,0.7); padding: 1rem;'>
-        <p style='margin: 0;'>🌟 <strong>Viva Star Coffee</strong> - Hệ thống kiểm hàng thông minh</p>
-        <p style='margin: 0; font-size: 0.9em;'>© 2025 - Powered by AI Technology</p>
+    <div style='text-align: center; color: rgba(0,0,0,0.8); background: rgba(0,0,0,0.05); padding: 1.5rem; border-radius: 12px;'>
+        <p style='margin: 0; font-weight: 600; color: #000;'>🌟 <strong>Viva Star Coffee</strong> - Hệ thống kiểm hàng thông minh</p>
+        <p style='margin: 0.5rem 0 0 0; font-size: 0.9em; color: rgba(0,0,0,0.6);'>© 2025 - Powered by AI Technology</p>
     </div>
     """,
     unsafe_allow_html=True
