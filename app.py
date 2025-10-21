@@ -12,6 +12,7 @@ import base64
 VN_TZ = pytz.timezone('Asia/Ho_Chi_Minh')
 HARDCODED_USER = "admin@123"
 HARDCODED_PASS = "A@bcde6789"
+
 st.set_page_config(
     page_title="Viva Star Coffee - Kiểm Hàng",
     page_icon="📦",
@@ -19,7 +20,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# CSS with enhanced mobile optimizations
+# CSS hiện đại
 st.markdown("""
     <style>
     .main {
@@ -57,57 +58,9 @@ st.markdown("""
         border-radius: 12px;
         border-left: 4px solid;
     }
+    /* Hide camera controls overlay */
     [data-testid="stCameraInput"] > div > div {
         background: transparent !important;
-    }
-    /* Mobile-specific styles */
-    @media (max-width: 600px) {
-        .stSelectbox, .stMultiSelect, .stNumberInput, .stTextInput {
-            font-size: 16px !important;
-        }
-        .stSelectbox > div > div, .stMultiSelect > div > div {
-            padding: 14px !important;
-            border-radius: 8px !important;
-            min-height: 50px !important; /* Increased height for visibility */
-            line-height: 1.6 !important; /* Improved text alignment */
-            white-space: nowrap !important; /* Prevent text wrapping */
-            overflow: visible !important; /* Ensure text isn't clipped */
-            text-overflow: clip !important; /* Avoid ellipsis truncation */
-            color: #000 !important; /* Force text visibility */
-            background-color: #fff !important; /* Ensure visible background */
-            border: 1px solid #ccc !important; /* Add border for clarity */
-        }
-        .stMultiSelect [data-testid="stMultiSelect"] div div {
-            color: #000 !important; /* Ensure selected item text is visible */
-            font-weight: 500 !important; /* Slightly bolder for readability */
-        }
-        .stNumberInput input {
-            padding: 14px !important;
-            border-radius: 8px !important;
-            font-size: 16px !important;
-        }
-        .stButton>button {
-            height: 50px !important; /* Larger touch target */
-            font-size: 16px !important;
-            border-radius: 10px !important;
-        }
-        .stMetric {
-            padding: 8px !important;
-            margin-bottom: 8px !important;
-        }
-        .product-card {
-            background: rgba(255,255,255,0.95);
-            padding: 1rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            margin-bottom: 1rem;
-        }
-        .stForm {
-            padding: 1rem !important;
-        }
-        hr {
-            display: none !important;
-        }
     }
     </style>
 """, unsafe_allow_html=True)
@@ -124,24 +77,27 @@ defaults = {
     'just_sent': False,
     'pending_confirm': False,
     'scanned_image': None,
-    'camera_key': 0,
-    'reset_alphabet': False
+    'camera_key': 0
 }
+
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
 # ==================== GOOGLE SHEETS ====================
+
 def get_client():
     """Lazy load client"""
     if st.session_state.client is None:
         try:
             scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
             creds_data = dict(st.secrets["gcp_service_account"]) if "gcp_service_account" in st.secrets else None
+            
             if creds_data:
                 creds = Credentials.from_service_account_info(creds_data, scopes=scope)
             else:
                 creds = Credentials.from_service_account_file('credentials.json', scopes=scope)
+            
             st.session_state.client = gspread.authorize(creds)
         except Exception as e:
             st.error(f"❌ Lỗi kết nối Google Sheets: {e}")
@@ -152,9 +108,11 @@ def load_products():
     """Cache products in session"""
     if st.session_state.products_df is not None:
         return st.session_state.products_df
+    
     client = get_client()
     if not client:
         return pd.DataFrame(columns=['Barcode', 'Tên SP', 'Thương hiệu'])
+    
     try:
         sheet = client.open(st.session_state.sheet_name).worksheet("Product_List")
         df = pd.DataFrame(sheet.get_all_records())
@@ -182,27 +140,36 @@ def get_or_create_sheet(client, sheet_name, worksheet_name, headers):
         return None
 
 # ==================== BARCODE OPERATIONS ====================
+
 def scan_gemini(image):
     """Scan barcode with Gemini - returns (barcode, confidence)"""
     try:
         import google.generativeai as genai
+        
         genai.configure(api_key="AIzaSyA52qNG0pm7JD9E5Jhp_GhcwjdgXJd8sXQ")
         img_bytes = io.BytesIO()
         image.save(img_bytes, format='PNG')
+        
         model = genai.GenerativeModel('gemini-2.0-flash-exp')
         response = model.generate_content([
             """Analyze this image and extract barcode number. Respond in this exact format:
 BARCODE: [number or NONE]
 CONFIDENCE: [HIGH/MEDIUM/LOW]
+
 - HIGH: Barcode is clear, sharp, well-lit, fully visible
 - MEDIUM: Barcode is readable but slightly blurry or partially obscured
 - LOW: Barcode is very blurry, dark, or unclear
+
 If no barcode detected, use BARCODE: NONE and CONFIDENCE: LOW""",
             {"mime_type": "image/png", "data": img_bytes.getvalue()}
         ])
+        
         result = response.text.strip()
+        
+        # Parse response
         barcode = None
         confidence = "LOW"
+        
         for line in result.split('\n'):
             if 'BARCODE:' in line:
                 barcode_text = line.split('BARCODE:')[1].strip().upper()
@@ -210,6 +177,7 @@ If no barcode detected, use BARCODE: NONE and CONFIDENCE: LOW""",
                     barcode = barcode_text
             elif 'CONFIDENCE:' in line:
                 confidence = line.split('CONFIDENCE:')[1].strip().upper()
+        
         return barcode, confidence
     except Exception as e:
         st.error(f"❌ Lỗi AI: {e}")
@@ -228,13 +196,15 @@ def save_scan(data):
     client = get_client()
     if not client:
         return False
+    
     try:
         sheet = get_or_create_sheet(
-            client,
-            st.session_state.sheet_name,
+            client, 
+            st.session_state.sheet_name, 
             "Barcode_Data",
             ["Barcode", "Tên SP", "Thương hiệu", "Số lượng", "Đơn vị", "Thời gian"]
         )
+        
         if sheet:
             sheet.append_row([
                 data['barcode'], data['name'], data['brand'],
@@ -250,6 +220,7 @@ def save_product(barcode, name, brand):
     client = get_client()
     if not client:
         return False
+    
     try:
         sheet = get_or_create_sheet(
             client,
@@ -257,9 +228,10 @@ def save_product(barcode, name, brand):
             "Product_List",
             ["Barcode", "Tên SP", "Thương hiệu"]
         )
+        
         if sheet:
             sheet.append_row([str(barcode).strip(), name, brand])
-            st.session_state.products_df = None
+            st.session_state.products_df = None  # Clear cache
             return True
     except Exception as e:
         st.error(f"❌ Lỗi lưu: {e}")
@@ -273,9 +245,10 @@ def reset():
     st.session_state.just_sent = False
     st.session_state.pending_confirm = False
     st.session_state.scanned_image = None
-    st.session_state.camera_key += 1
+    st.session_state.camera_key += 1  # Tăng key để force reset camera
 
 # ==================== AUTH ====================
+
 def check_auth():
     """Check login from query params"""
     token = st.query_params.get("logged_in", None)
@@ -300,18 +273,24 @@ def logout():
     st.rerun()
 
 # ==================== MAIN APP ====================
+
+# Check auth
 if not st.session_state.logged_in:
     st.session_state.logged_in = check_auth()
 
+# Login screen
 if not st.session_state.logged_in:
     st.markdown("<h1 style='text-align: center; color: white;'>🔒 Đăng Nhập Hệ Thống</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: rgba(255,255,255,0.8);'>Viva Star Coffee - Quản lý kiểm hàng</p>", unsafe_allow_html=True)
+    
     with st.form("login_form"):
         username = st.text_input("👤 Tên đăng nhập", placeholder="Nhập tên đăng nhập")
         password = st.text_input("🔑 Mật khẩu", type="password", placeholder="Nhập mật khẩu")
+        
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             submit = st.form_submit_button("🚀 Đăng nhập", use_container_width=True)
+        
         if submit:
             if username == HARDCODED_USER and password == HARDCODED_PASS:
                 login()
@@ -322,6 +301,8 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ==================== MAIN INTERFACE ====================
+
+# Header
 col1, col2 = st.columns([4, 1])
 with col1:
     st.title("📦 Viva Star Coffee")
@@ -329,18 +310,19 @@ with col1:
 with col2:
     if st.button("🚪 Thoát", use_container_width=True):
         logout()
+
 st.markdown("---")
 
+# Load products
 products_df = load_products()
+
+# Auto-reset after send
 if st.session_state.just_sent:
     reset()
     st.rerun()
 
-# Debug toggle for session state (optional, disable in production)
-if st.checkbox("Hiển thị session state (debug)", key="debug_toggle"):
-    st.write(st.session_state)
-
 # ==================== TABS ====================
+
 tab1, tab2, tab3, tab4 = st.tabs(["📸 Quét Mã", "📦 Nhập Kho", "📊 Dữ Liệu", "➕ Thêm SP"])
 
 # ===== TAB 1: SCAN =====
@@ -351,10 +333,14 @@ with tab1:
         horizontal=True,
         label_visibility="collapsed"
     )
+    
     st.markdown("---")
+    
+    # Camera mode
     if scan_mode == "📷 Camera":
+        # Hướng dẫn nổi bật
         st.markdown("""
-        <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
                     padding: 1.5rem; border-radius: 16px; margin-bottom: 1rem;
                     box-shadow: 0 4px 12px rgba(0,0,0,0.15);'>
             <h3 style='color: white; margin: 0 0 1rem 0; text-align: center;'>📸 Hướng Dẫn Chụp Barcode</h3>
@@ -369,12 +355,17 @@ with tab1:
             </div>
         </div>
         """, unsafe_allow_html=True)
+        
+        # CSS cải thiện camera và nút chụp
         st.markdown("""
         <style>
+        /* Container camera */
         [data-testid="stCameraInput"] {
             width: 100% !important;
             position: relative !important;
         }
+        
+        /* Video stream to hơn */
         [data-testid="stCameraInput"] video {
             width: 100% !important;
             height: 65vh !important;
@@ -384,6 +375,8 @@ with tab1:
             box-shadow: 0 8px 32px rgba(0,0,0,0.3) !important;
             border: 4px solid #4CAF50 !important;
         }
+        
+        /* Image preview */
         [data-testid="stCameraInput"] img {
             width: 100% !important;
             height: auto !important;
@@ -392,6 +385,8 @@ with tab1:
             border-radius: 20px !important;
             border: 4px solid #4CAF50 !important;
         }
+        
+        /* NÚT CHỤP - TO HƠN VÀ DỄ NHẤN HƠN */
         [data-testid="stCameraInput"] button {
             height: 80px !important;
             width: 80px !important;
@@ -404,13 +399,19 @@ with tab1:
             cursor: pointer !important;
             transition: all 0.3s ease !important;
         }
+        
+        /* Hiệu ứng khi hover */
         [data-testid="stCameraInput"] button:hover {
             transform: scale(1.1) !important;
             box-shadow: 0 8px 30px rgba(76, 175, 80, 0.7) !important;
         }
+        
+        /* Hiệu ứng khi nhấn */
         [data-testid="stCameraInput"] button:active {
             transform: scale(0.95) !important;
         }
+        
+        /* Container của nút chụp - ĐẶT Ở DƯỚI KHUNG HÌNH */
         [data-testid="stCameraInput"] > div > div:last-child {
             position: relative !important;
             bottom: auto !important;
@@ -423,17 +424,22 @@ with tab1:
             justify-content: center !important;
             align-items: center !important;
         }
+        
+        /* Thêm animation nhấp nháy cho nút */
         @keyframes pulse {
-            0%, 100% {
+            0%, 100% { 
                 box-shadow: 0 6px 20px rgba(76, 175, 80, 0.5);
             }
-            50% {
+            50% { 
                 box-shadow: 0 6px 30px rgba(76, 175, 80, 0.8);
             }
         }
+        
         [data-testid="stCameraInput"] button {
             animation: pulse 2s infinite !important;
         }
+        
+        /* Label camera */
         [data-testid="stCameraInput"] label {
             font-size: 1.3em !important;
             font-weight: bold !important;
@@ -444,19 +450,30 @@ with tab1:
         }
         </style>
         """, unsafe_allow_html=True)
+        
         cam = st.camera_input("📸 SẴN SÀNG? NHẤN NÚT TRÒN XANH BÊN DƯỚI!", label_visibility="visible", key=f"camera_{st.session_state.camera_key}")
+        
         if cam:
             h = hash(cam.getvalue())
+            
+            # Chỉ xử lý ảnh mới hoặc khi chưa có product
             if h != st.session_state.img_hash or not st.session_state.product:
+                # Nếu đã có barcode và product từ lần quét trước, giữ nguyên
                 if st.session_state.img_hash == h and st.session_state.product:
-                    pass
+                    pass  # Không làm gì, giữ nguyên state
                 else:
+                    # Ảnh mới, xử lý quét
                     st.session_state.img_hash = h
                     img = Image.open(cam)
+                    
+                    # Lưu ảnh vào session state
                     st.session_state.scanned_image = img
+                    
                     st.image(img, caption="✅ Ảnh đã chụp", use_container_width=True)
+                    
                     with st.spinner("🤖 AI đang quét barcode..."):
                         barcode, confidence = scan_gemini(img)
+                        
                         if confidence == "HIGH" and barcode:
                             st.success("✅ Ảnh rõ ràng! Đang xử lý...")
                             st.session_state.barcode = barcode
@@ -466,6 +483,7 @@ with tab1:
                             st.warning("⚠️ Ảnh hơi mờ nhưng có thể quét được")
                             st.session_state.pending_confirm = True
                             st.session_state.barcode = barcode
+                            
                             col1, col2 = st.columns(2)
                             with col1:
                                 if st.button("✅ Quét ngay", use_container_width=True, type="primary", key="confirm_scan"):
@@ -481,20 +499,30 @@ with tab1:
                             if st.button("🔄 Chụp lại", use_container_width=True, key="retry_cam"):
                                 reset()
                                 st.rerun()
+    
+    # Upload mode
     elif scan_mode == "📁 Upload":
         upload = st.file_uploader("📁 Chọn ảnh", type=['jpg', 'jpeg', 'png'], label_visibility="collapsed")
+        
         if upload:
             h = hash(upload.getvalue())
+            
+            # Chỉ xử lý ảnh mới
             if h != st.session_state.img_hash or not st.session_state.product:
                 if st.session_state.img_hash == h and st.session_state.product:
-                    pass
+                    pass  # Giữ nguyên state
                 else:
                     st.session_state.img_hash = h
                     img = Image.open(upload)
+                    
+                    # Lưu ảnh vào session state
                     st.session_state.scanned_image = img
+                    
                     st.image(img, caption="Ảnh đã chọn", use_container_width=True)
+                    
                     with st.spinner("🤖 AI đang quét..."):
                         barcode, confidence = scan_gemini(img)
+                        
                         if barcode:
                             st.session_state.barcode = barcode
                             st.session_state.product = lookup(barcode, products_df)
@@ -504,8 +532,11 @@ with tab1:
                             if st.button("🔄 Chọn lại", use_container_width=True, key="retry_upload"):
                                 reset()
                                 st.rerun()
+    
+    # Manual mode
     else:
         manual = st.text_input("⌨️ Nhập mã barcode", placeholder="Ví dụ: 8935049502142", max_chars=20)
+        
         if st.button("🔍 Tra cứu", use_container_width=True):
             if manual:
                 st.session_state.barcode = manual
@@ -513,24 +544,36 @@ with tab1:
                 st.rerun()
             else:
                 st.warning("⚠️ Vui lòng nhập mã barcode!")
+    
+    # Show product form - QUAN TRỌNG: Phải nằm ngoài các điều kiện scan_mode
     if st.session_state.barcode and st.session_state.product and not st.session_state.pending_confirm:
         st.markdown("---")
+        
+        # ẨN HÌNH ẢNH - Chỉ hiển thị thông tin
         st.success(f"✅ **Mã vạch đã quét:** {st.session_state.barcode}")
+        
         if st.session_state.product['name'] == 'Chưa có thông tin':
             st.warning("⚠️ **Sản phẩm chưa được thêm vào hệ thống**")
             st.info("💡 Vui lòng chuyển sang tab **'Thêm SP'** để thêm thông tin sản phẩm này")
+            
             if st.button("🔄 Quét lại", use_container_width=True, key="rescan_unknown"):
                 reset()
                 st.rerun()
+        
         else:
+            # Product info
             col1, col2 = st.columns(2)
             with col1:
                 st.metric("📦 Tên sản phẩm", st.session_state.product['name'])
             with col2:
                 st.metric("🏷️ Thương hiệu", st.session_state.product['brand'])
+            
             st.markdown("---")
+            
+            # Input form
             with st.form("input_form", clear_on_submit=True):
                 st.subheader("📝 Nhập thông tin kiểm hàng")
+                
                 col1, col2 = st.columns([3, 1])
                 with col1:
                     qty = st.number_input(
@@ -542,24 +585,24 @@ with tab1:
                         help="Nhập số lượng sản phẩm"
                     )
                 with col2:
-                    unit_list = st.multiselect(
+                    unit = st.selectbox(
                         "Đơn vị",
                         ["cái", "hộp", "chai", "kg", "g", "L", "ml"],
-                        max_selections=1,
-                        default=["cái"],
-                        help="Chọn đơn vị tính",
-                        key="unit_multi"
+                        help="Chọn đơn vị tính"
                     )
-                    unit = unit_list[0] if unit_list else "cái"
+                
                 st.markdown("---")
+                
                 col1, col2 = st.columns(2)
                 with col1:
                     rescan = st.form_submit_button("🔄 Quét lại", use_container_width=True)
                 with col2:
                     submit = st.form_submit_button("✅ Xác nhận & Gửi", type="primary", use_container_width=True)
+                
                 if rescan:
                     reset()
                     st.rerun()
+                
                 if submit:
                     if qty > 0:
                         data = {
@@ -570,6 +613,7 @@ with tab1:
                             'unit': unit,
                             'time': datetime.now(VN_TZ).strftime("%Y-%m-%d %H:%M:%S")
                         }
+                        
                         with st.spinner("⏳ Đang lưu dữ liệu..."):
                             if save_scan(data):
                                 st.success("✅ Đã lưu thành công!")
@@ -581,33 +625,34 @@ with tab1:
                     else:
                         st.warning("⚠️ Số lượng phải lớn hơn 0!")
 
-# ===== TAB 2: NHẬP KHO ===== (Fixed Version)
+# ===== TAB 2: NHẬP KHO =====
 with tab2:
     st.subheader("📦 Nhập Kho")
-    st.caption("Chọn sản phẩm và nhập số lượng để lưu kho")
+    st.caption("Chọn sản phẩm từ danh sách và nhập số lượng")
+    
     if products_df.empty or len(products_df) == 0:
         st.warning("⚠️ Chưa có sản phẩm nào trong hệ thống. Vui lòng thêm sản phẩm ở tab 'Thêm SP'")
     else:
-        # Fix: Use multiselect for search method
-        if "search_method_multi" not in st.session_state:
-            st.session_state["search_method_multi"] = ["Tìm kiếm"]
-        search_method_list = st.multiselect(
-            "🔍 Chọn cách tìm kiếm",
-            ["Tìm kiếm", "Lọc theo chữ cái", "Tất cả"],
-            max_selections=1,
-            default=st.session_state["search_method_multi"],
-            help="Chọn phương thức để tìm sản phẩm",
-            key="search_method_multi"
+        # Search method selector
+        search_method = st.radio(
+            "Chọn cách tìm kiếm:",
+            ["🔍 Tìm kiếm", "🔤 Chữ cái", "📋 Tất cả"],
+            horizontal=True,
+            label_visibility="collapsed"
         )
-        search_method = search_method_list[0] if search_method_list else "Tìm kiếm"
+        
+        st.markdown("---")
+        
         filtered_products = products_df.copy()
-        if search_method == "Tìm kiếm":
+        
+        # Search mode
+        if search_method == "🔍 Tìm kiếm":
             search_query = st.text_input(
-                "🔍 Tìm sản phẩm",
-                placeholder="Nhập tên, barcode hoặc thương hiệu...",
-                help="Gõ để tìm sản phẩm nhanh",
-                key="search_input"
+                "🔍 Tìm kiếm sản phẩm",
+                placeholder="Nhập tên sản phẩm hoặc barcode...",
+                help="Gõ tên hoặc mã barcode để tìm"
             )
+            
             if search_query:
                 search_query = search_query.lower().strip()
                 filtered_products = products_df[
@@ -615,93 +660,98 @@ with tab2:
                     products_df['Barcode'].str.lower().str.contains(search_query, na=False) |
                     products_df['Thương hiệu'].str.lower().str.contains(search_query, na=False)
                 ]
-        elif search_method == "Lọc theo chữ cái":
-            # Fix: Use callback for reset to avoid state conflict
-            def reset_alphabet_filter():
-                st.session_state.reset_alphabet = True
-                if "alphabet_multi" in st.session_state:
-                    del st.session_state["alphabet_multi"]
-                st.rerun()
-
-            if st.button("🗑️ Xóa bộ lọc", use_container_width=True, key="clear_filter", on_click=reset_alphabet_filter):
-                pass
-
-            alphabet = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-                        'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0-9']
-            if "alphabet_multi" not in st.session_state or st.session_state.reset_alphabet:
-                st.session_state["alphabet_multi"] = ["Tất cả"]
-                st.session_state.reset_alphabet = False
-            selected_letter_list = st.multiselect(
-                "🔤 Chọn chữ cái đầu",
-                ["Tất cả"] + alphabet,
-                max_selections=1,
-                default=st.session_state["alphabet_multi"],
-                help="Chọn chữ cái để lọc sản phẩm",
-                key="alphabet_multi"
-            )
-            selected_letter = selected_letter_list[0] if selected_letter_list else "Tất cả"
-            if selected_letter != "Tất cả":
+        
+        # Alphabet mode
+        elif search_method == "🔤 Chữ cái":
+            st.markdown("**Chọn chữ cái đầu:**")
+            
+            # Create alphabet buttons
+            alphabet = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 
+                       'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0-9']
+            
+            cols = st.columns(7)
+            selected_letter = None
+            
+            for idx, letter in enumerate(alphabet):
+                col_idx = idx % 7
+                with cols[col_idx]:
+                    if st.button(letter, key=f"letter_{letter}", use_container_width=True):
+                        selected_letter = letter
+            
+            if selected_letter:
+                st.info(f"📝 Hiển thị sản phẩm bắt đầu bằng: **{selected_letter}**")
+                
                 if selected_letter == '0-9':
+                    # Filter products starting with numbers
                     filtered_products = products_df[
                         products_df['Tên SP'].str[0].str.match(r'^\d', na=False)
                     ]
                 else:
+                    # Filter products starting with selected letter
                     filtered_products = products_df[
                         products_df['Tên SP'].str.upper().str.startswith(selected_letter, na=False)
                     ]
+        
+        # Display results
+        st.markdown("---")
+        
         if filtered_products.empty:
-            st.info("📭 Không tìm thấy sản phẩm nào. Hãy thử tìm kiếm khác hoặc thêm sản phẩm mới!")
+            st.info("📭 Không tìm thấy sản phẩm nào")
         else:
             st.success(f"✅ Tìm thấy **{len(filtered_products)}** sản phẩm")
+            
+            # Product selector
             product_options = filtered_products.apply(
-                lambda x: f"{x['Tên SP']} ({x['Barcode']})", axis=1
+                lambda x: f"{x['Tên SP']} - {x['Thương hiệu']} ({x['Barcode']})", axis=1
             ).tolist()
-            # Initialize product select default
-            if "product_multi" not in st.session_state and product_options:
-                st.session_state["product_multi"] = [product_options[0]]
-            selected_product_list = st.multiselect(
-                "📦 Chọn sản phẩm",
+            
+            selected_product = st.selectbox(
+                "📦 Chọn sản phẩm:",
                 options=product_options,
-                max_selections=1,
-                default=st.session_state["product_multi"] if "product_multi" in st.session_state else None,
-                help="Chọn sản phẩm để nhập kho",
-                key="product_multi"
+                help="Chọn sản phẩm để nhập kho"
             )
-            selected_product = selected_product_list[0] if selected_product_list else None
+            
             if selected_product:
+                # Extract barcode from selection
                 selected_barcode = selected_product.split('(')[-1].rstrip(')')
                 product_info = filtered_products[filtered_products['Barcode'] == selected_barcode].iloc[0]
-                st.markdown(
-                    f"""
-                    <div class='product-card'>
-                        <p style='margin: 0; font-weight: bold; font-size: 1.1em;'>📦 {product_info['Tên SP']}</p>
-                        <p style='margin: 0.5rem 0; color: #555;'>🏷️ {product_info['Thương hiệu']}</p>
-                        <p style='margin: 0; color: #777; font-size: 0.9em;'>📊 Barcode: {product_info['Barcode']}</p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                
+                # Display product info
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("📦 Tên sản phẩm", product_info['Tên SP'])
+                with col2:
+                    st.metric("🏷️ Thương hiệu", product_info['Thương hiệu'])
+                
+                st.info(f"📊 Barcode: **{product_info['Barcode']}**")
+                
+                st.markdown("---")
+                
+                # Input form
                 with st.form("warehouse_input_form", clear_on_submit=True):
                     st.subheader("📝 Nhập thông tin nhập kho")
-                    qty = st.number_input(
-                        "Số lượng",
-                        min_value=0.0,
-                        step=0.5,
-                        format="%.2f",
-                        value=1.0,
-                        help="Nhập số lượng sản phẩm",
-                        key="qty_input"
-                    )
-                    unit_list = st.multiselect(
-                        "Đơn vị",
-                        ["cái", "hộp", "chai", "kg", "g", "L", "ml"],
-                        max_selections=1,
-                        default=["cái"],
-                        help="Chọn đơn vị tính",
-                        key="unit_multi"
-                    )
-                    unit = unit_list[0] if unit_list else "cái"
-                    submit = st.form_submit_button("✅ Lưu nhập kho", type="primary", use_container_width=True)
+                    
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        qty = st.number_input(
+                            "Số lượng",
+                            min_value=0.0,
+                            step=0.1,
+                            format="%.2f",
+                            value=1.0,
+                            help="Nhập số lượng sản phẩm"
+                        )
+                    with col2:
+                        unit = st.selectbox(
+                            "Đơn vị",
+                            ["cái", "hộp", "chai", "kg", "g", "L", "ml"],
+                            help="Chọn đơn vị tính"
+                        )
+                    
+                    st.markdown("---")
+                    
+                    submit = st.form_submit_button("✅ Xác nhận & Lưu", type="primary", use_container_width=True)
+                    
                     if submit:
                         if qty > 0:
                             data = {
@@ -712,41 +762,45 @@ with tab2:
                                 'unit': unit,
                                 'time': datetime.now(VN_TZ).strftime("%Y-%m-%d %H:%M:%S")
                             }
+                            
                             with st.spinner("⏳ Đang lưu dữ liệu..."):
                                 if save_scan(data):
-                                    st.success(f"✅ Đã nhập kho: **{product_info['Tên SP']}** - **{qty} {unit}**")
+                                    st.success(f"✅ Đã nhập kho: **{product_info['Tên SP']}** - Số lượng: **{qty} {unit}**")
                                     st.balloons()
-                                    for key in ["qty_input", "unit_multi", "product_multi", "search_method_multi"]:
-                                        if key in st.session_state:
-                                            del st.session_state[key]
-                                    st.rerun()
                                 else:
-                                    st.error("❌ Lỗi lưu dữ liệu. Vui lòng thử lại!")
+                                    st.error("❌ Không thể lưu. Vui lòng thử lại!")
                         else:
                             st.warning("⚠️ Số lượng phải lớn hơn 0!")
 
 # ===== TAB 3: DATA =====
 with tab3:
     st.subheader("📊 Dữ liệu đã quét")
+    
     today = datetime.now(VN_TZ).date()
+    
     col1, col2 = st.columns(2)
     with col1:
         start = st.date_input("📅 Từ ngày", value=today, max_value=today)
     with col2:
         end = st.date_input("📅 Đến ngày", value=today, max_value=today)
+    
     if st.button("🔄 Tải dữ liệu", use_container_width=True):
         client = get_client()
+        
         if client:
             with st.spinner("⏳ Đang tải..."):
                 try:
                     sheet = client.open(st.session_state.sheet_name).worksheet("Barcode_Data")
                     data = sheet.get_all_records()
+                    
                     if data:
                         df = pd.DataFrame(data)
                         df['Thời gian'] = pd.to_datetime(df['Thời gian'], errors='coerce')
                         df = df.dropna(subset=['Thời gian'])
+                        
                         mask = (df['Thời gian'].dt.date >= start) & (df['Thời gian'].dt.date <= end)
                         filtered = df[mask]
+                        
                         if not filtered.empty:
                             col1, col2, col3 = st.columns(3)
                             with col1:
@@ -755,8 +809,10 @@ with tab3:
                                 st.metric("📦 Số sản phẩm", filtered['Barcode'].nunique())
                             with col3:
                                 st.metric("📊 Tổng SL", f"{filtered['Số lượng'].sum():.1f}")
+                            
                             st.markdown("---")
                             st.dataframe(filtered, use_container_width=True, hide_index=True)
+                            
                             csv = filtered.to_csv(index=False, encoding='utf-8-sig')
                             st.download_button(
                                 "📥 Tải xuống CSV",
@@ -769,6 +825,7 @@ with tab3:
                             st.info("📭 Không có dữ liệu trong khoảng thời gian này")
                     else:
                         st.info("📭 Chưa có dữ liệu nào được lưu")
+                
                 except Exception as e:
                     st.error(f"❌ Lỗi: {e}")
 
@@ -776,6 +833,7 @@ with tab3:
 with tab4:
     st.subheader("➕ Thêm sản phẩm mới")
     st.caption("Thêm thông tin sản phẩm cho barcode chưa có trong hệ thống")
+    
     with st.form("add_product_form", clear_on_submit=True):
         barcode_input = st.text_input(
             "📊 Mã Barcode",
@@ -783,18 +841,23 @@ with tab4:
             max_chars=20,
             help="Nhập mã barcode đầy đủ"
         )
+        
         name_input = st.text_input(
             "📦 Tên sản phẩm",
             placeholder="Ví dụ: Cà phê G7 3in1",
             help="Nhập tên đầy đủ của sản phẩm"
         )
+        
         brand_input = st.text_input(
             "🏷️ Thương hiệu",
             placeholder="Ví dụ: Trung Nguyên",
             help="Nhập tên thương hiệu"
         )
+        
         st.markdown("---")
+        
         submit = st.form_submit_button("💾 Lưu sản phẩm", type="primary", use_container_width=True)
+        
         if submit:
             if barcode_input and name_input and brand_input:
                 with st.spinner("⏳ Đang lưu..."):
