@@ -485,11 +485,7 @@ with tab1:
     if st.session_state.barcode and st.session_state.product and not st.session_state.pending_confirm:
         st.markdown("---")
         
-        # Hiển thị ảnh đã quét nếu có
-        if st.session_state.scanned_image:
-            st.image(st.session_state.scanned_image, caption="📸 Ảnh đã quét", use_container_width=True)
-            st.markdown("---")
-        
+        # ẨN HÌNH ẢNH - Chỉ hiển thị thông tin
         st.success(f"✅ **Mã vạch đã quét:** {st.session_state.barcode}")
         
         if st.session_state.product['name'] == 'Chưa có thông tin':
