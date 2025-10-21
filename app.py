@@ -1,4 +1,4 @@
-import streamlit as st  # Ensure this is the first line
+import streamlit as st
 from PIL import Image
 import gspread
 from google.oauth2.service_account import Credentials
@@ -19,7 +19,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# CSS with mobile optimizations
+# CSS with enhanced mobile optimizations
 st.markdown("""
     <style>
     .main {
@@ -62,26 +62,32 @@ st.markdown("""
     }
     /* Mobile-specific styles */
     @media (max-width: 600px) {
-        .stSelectbox, .stNumberInput, .stTextInput {
+        .stSelectbox, .stMultiSelect, .stNumberInput, .stTextInput {
             font-size: 16px !important;
         }
-        .stSelectbox > div > div {
-            padding: 12px !important;
+        .stSelectbox > div > div, .stMultiSelect > div > div {
+            padding: 14px !important;
             border-radius: 8px !important;
-            min-height: 48px !important; /* Ensure touch-friendly height */
-            line-height: 1.5 !important; /* Improve text alignment */
-        }
-        .stSelectbox [data-testid="stSelectbox"] div {
+            min-height: 50px !important; /* Increased height for visibility */
+            line-height: 1.6 !important; /* Improved text alignment */
+            white-space: nowrap !important; /* Prevent text wrapping */
+            overflow: visible !important; /* Ensure text isn't clipped */
+            text-overflow: clip !important; /* Avoid ellipsis truncation */
             color: #000 !important; /* Force text visibility */
-            background-color: #fff !important; /* Ensure background is visible */
+            background-color: #fff !important; /* Ensure visible background */
+            border: 1px solid #ccc !important; /* Add border for clarity */
+        }
+        .stMultiSelect [data-testid="stMultiSelect"] div div {
+            color: #000 !important; /* Ensure selected item text is visible */
+            font-weight: 500 !important; /* Slightly bolder for readability */
         }
         .stNumberInput input {
-            padding: 12px !important;
+            padding: 14px !important;
             border-radius: 8px !important;
             font-size: 16px !important;
         }
         .stButton>button {
-            height: 48px !important;
+            height: 50px !important; /* Larger touch target */
             font-size: 16px !important;
             border-radius: 10px !important;
         }
@@ -119,7 +125,7 @@ defaults = {
     'pending_confirm': False,
     'scanned_image': None,
     'camera_key': 0,
-    'reset_alphabet': False  # New key for filter reset
+    'reset_alphabet': False
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -330,6 +336,10 @@ if st.session_state.just_sent:
     reset()
     st.rerun()
 
+# Debug toggle for session state (optional, disable in production)
+if st.checkbox("Hiển thị session state (debug)", key="debug_toggle"):
+    st.write(st.session_state)
+
 # ==================== TABS ====================
 tab1, tab2, tab3, tab4 = st.tabs(["📸 Quét Mã", "📦 Nhập Kho", "📊 Dữ Liệu", "➕ Thêm SP"])
 
@@ -532,14 +542,15 @@ with tab1:
                         help="Nhập số lượng sản phẩm"
                     )
                 with col2:
-                    unit = st.multiselect(
+                    unit_list = st.multiselect(
                         "Đơn vị",
                         ["cái", "hộp", "chai", "kg", "g", "L", "ml"],
                         max_selections=1,
                         default=["cái"],
-                        help="Chọn đơn vị tính"
+                        help="Chọn đơn vị tính",
+                        key="unit_multi"
                     )
-                    unit = unit[0] if unit else "cái"
+                    unit = unit_list[0] if unit_list else "cái"
                 st.markdown("---")
                 col1, col2 = st.columns(2)
                 with col1:
@@ -577,12 +588,18 @@ with tab2:
     if products_df.empty or len(products_df) == 0:
         st.warning("⚠️ Chưa có sản phẩm nào trong hệ thống. Vui lòng thêm sản phẩm ở tab 'Thêm SP'")
     else:
-        search_method = st.selectbox(
+        # Fix: Use multiselect for search method
+        if "search_method_multi" not in st.session_state:
+            st.session_state["search_method_multi"] = ["Tìm kiếm"]
+        search_method_list = st.multiselect(
             "🔍 Chọn cách tìm kiếm",
             ["Tìm kiếm", "Lọc theo chữ cái", "Tất cả"],
+            max_selections=1,
+            default=st.session_state["search_method_multi"],
             help="Chọn phương thức để tìm sản phẩm",
-            key="search_method_select"
+            key="search_method_multi"
         )
+        search_method = search_method_list[0] if search_method_list else "Tìm kiếm"
         filtered_products = products_df.copy()
         if search_method == "Tìm kiếm":
             search_query = st.text_input(
@@ -607,14 +624,13 @@ with tab2:
                 st.rerun()
 
             if st.button("🗑️ Xóa bộ lọc", use_container_width=True, key="clear_filter", on_click=reset_alphabet_filter):
-                pass  # Callback handles the reset
+                pass
 
             alphabet = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
                         'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0-9']
-            # Initialize default value if not set
             if "alphabet_multi" not in st.session_state or st.session_state.reset_alphabet:
                 st.session_state["alphabet_multi"] = ["Tất cả"]
-                st.session_state.reset_alphabet = False  # Reset flag after use
+                st.session_state.reset_alphabet = False
             selected_letter_list = st.multiselect(
                 "🔤 Chọn chữ cái đầu",
                 ["Tất cả"] + alphabet,
@@ -641,14 +657,17 @@ with tab2:
                 lambda x: f"{x['Tên SP']} ({x['Barcode']})", axis=1
             ).tolist()
             # Initialize product select default
-            if "product_select" not in st.session_state:
-                st.session_state["product_select"] = product_options[0] if product_options else None
-            selected_product = st.selectbox(
+            if "product_multi" not in st.session_state and product_options:
+                st.session_state["product_multi"] = [product_options[0]]
+            selected_product_list = st.multiselect(
                 "📦 Chọn sản phẩm",
                 options=product_options,
+                max_selections=1,
+                default=st.session_state["product_multi"] if "product_multi" in st.session_state else None,
                 help="Chọn sản phẩm để nhập kho",
-                key="product_select"
+                key="product_multi"
             )
+            selected_product = selected_product_list[0] if selected_product_list else None
             if selected_product:
                 selected_barcode = selected_product.split('(')[-1].rstrip(')')
                 product_info = filtered_products[filtered_products['Barcode'] == selected_barcode].iloc[0]
@@ -673,7 +692,6 @@ with tab2:
                         help="Nhập số lượng sản phẩm",
                         key="qty_input"
                     )
-                    # Fix: Use multiselect as workaround for selectbox on mobile
                     unit_list = st.multiselect(
                         "Đơn vị",
                         ["cái", "hộp", "chai", "kg", "g", "L", "ml"],
@@ -698,8 +716,7 @@ with tab2:
                                 if save_scan(data):
                                     st.success(f"✅ Đã nhập kho: **{product_info['Tên SP']}** - **{qty} {unit}**")
                                     st.balloons()
-                                    # Reset all form-related states
-                                    for key in ["qty_input", "unit_multi", "product_select"]:
+                                    for key in ["qty_input", "unit_multi", "product_multi", "search_method_multi"]:
                                         if key in st.session_state:
                                             del st.session_state[key]
                                     st.rerun()
