@@ -596,10 +596,12 @@ with tab2:
                 st.rerun()
             alphabet = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
                         'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0-9']
+            # Set default if not in session state
+            if "alphabet_select" not in st.session_state:
+                st.session_state["alphabet_select"] = "Tất cả"
             selected_letter = st.selectbox(
                 "🔤 Chọn chữ cái đầu",
                 ["Tất cả"] + alphabet,
-                index=0,  # Fix: Default to first option for reliable reset
                 help="Chọn chữ cái để lọc sản phẩm",
                 key="alphabet_select"
             )
@@ -649,10 +651,12 @@ with tab2:
                         help="Nhập số lượng sản phẩm",
                         key="qty_input"
                     )
+                    # Set default for unit if not in session state
+                    if "unit_select" not in st.session_state:
+                        st.session_state["unit_select"] = "cái"
                     unit = st.selectbox(
                         "Đơn vị",
                         ["cái", "hộp", "chai", "kg", "g", "L", "ml"],
-                        index=0,  # Fix: Default to first option to prevent blank display
                         help="Chọn đơn vị tính",
                         key="unit_select"
                     )
