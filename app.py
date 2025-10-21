@@ -388,39 +388,45 @@ with tab1:
         if cam:
             h = hash(cam.getvalue())
             
-            if h != st.session_state.img_hash:
-                st.session_state.img_hash = h
-                img = Image.open(cam)
-                st.image(img, caption="✅ Ảnh đã chụp", use_container_width=True)
-                
-                with st.spinner("🤖 AI đang quét barcode..."):
-                    barcode, confidence = scan_gemini(img)
+            # Chỉ xử lý ảnh mới hoặc khi chưa có product
+            if h != st.session_state.img_hash or not st.session_state.product:
+                # Nếu đã có barcode và product từ lần quét trước, giữ nguyên
+                if st.session_state.img_hash == h and st.session_state.product:
+                    pass  # Không làm gì, giữ nguyên state
+                else:
+                    # Ảnh mới, xử lý quét
+                    st.session_state.img_hash = h
+                    img = Image.open(cam)
+                    st.image(img, caption="✅ Ảnh đã chụp", use_container_width=True)
                     
-                    if confidence == "HIGH" and barcode:
-                        st.success("✅ Ảnh rõ ràng! Đang xử lý...")
-                        st.session_state.barcode = barcode
-                        st.session_state.product = lookup(barcode, products_df)
-                        st.rerun()
-                    elif confidence == "MEDIUM" and barcode:
-                        st.warning("⚠️ Ảnh hơi mờ nhưng có thể quét được")
-                        st.session_state.pending_confirm = True
-                        st.session_state.barcode = barcode
+                    with st.spinner("🤖 AI đang quét barcode..."):
+                        barcode, confidence = scan_gemini(img)
                         
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            if st.button("✅ Quét ngay", use_container_width=True, type="primary"):
-                                st.session_state.product = lookup(barcode, products_df)
-                                st.session_state.pending_confirm = False
-                                st.rerun()
-                        with col2:
-                            if st.button("🔄 Chụp lại", use_container_width=True):
+                        if confidence == "HIGH" and barcode:
+                            st.success("✅ Ảnh rõ ràng! Đang xử lý...")
+                            st.session_state.barcode = barcode
+                            st.session_state.product = lookup(barcode, products_df)
+                            st.rerun()
+                        elif confidence == "MEDIUM" and barcode:
+                            st.warning("⚠️ Ảnh hơi mờ nhưng có thể quét được")
+                            st.session_state.pending_confirm = True
+                            st.session_state.barcode = barcode
+                            
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                if st.button("✅ Quét ngay", use_container_width=True, type="primary", key="confirm_scan"):
+                                    st.session_state.product = lookup(barcode, products_df)
+                                    st.session_state.pending_confirm = False
+                                    st.rerun()
+                            with col2:
+                                if st.button("🔄 Chụp lại", use_container_width=True, key="retake_cam"):
+                                    reset()
+                                    st.rerun()
+                        else:
+                            st.error("❌ Không tìm thấy barcode hoặc ảnh quá mờ. Vui lòng chụp lại!")
+                            if st.button("🔄 Chụp lại", use_container_width=True, key="retry_cam"):
                                 reset()
                                 st.rerun()
-                    else:
-                        st.error("❌ Không tìm thấy barcode hoặc ảnh quá mờ. Vui lòng chụp lại!")
-                        if st.button("🔄 Chụp lại", use_container_width=True):
-                            reset()
-                            st.rerun()
     
     # Upload mode
     elif scan_mode == "📁 Upload":
@@ -429,20 +435,27 @@ with tab1:
         if upload:
             h = hash(upload.getvalue())
             
-            if h != st.session_state.img_hash:
-                st.session_state.img_hash = h
-                img = Image.open(upload)
-                st.image(img, caption="Ảnh đã chọn", use_container_width=True)
-                
-                with st.spinner("🤖 AI đang quét..."):
-                    barcode, confidence = scan_gemini(img)
+            # Chỉ xử lý ảnh mới
+            if h != st.session_state.img_hash or not st.session_state.product:
+                if st.session_state.img_hash == h and st.session_state.product:
+                    pass  # Giữ nguyên state
+                else:
+                    st.session_state.img_hash = h
+                    img = Image.open(upload)
+                    st.image(img, caption="Ảnh đã chọn", use_container_width=True)
                     
-                    if barcode:
-                        st.session_state.barcode = barcode
-                        st.session_state.product = lookup(barcode, products_df)
-                        st.rerun()
-                    else:
-                        st.error("❌ Không tìm thấy barcode. Vui lòng chọn ảnh khác!")
+                    with st.spinner("🤖 AI đang quét..."):
+                        barcode, confidence = scan_gemini(img)
+                        
+                        if barcode:
+                            st.session_state.barcode = barcode
+                            st.session_state.product = lookup(barcode, products_df)
+                            st.rerun()
+                        else:
+                            st.error("❌ Không tìm thấy barcode. Vui lòng chọn ảnh khác!")
+                            if st.button("🔄 Chọn lại", use_container_width=True, key="retry_upload"):
+                                reset()
+                                st.rerun()
     
     # Manual mode
     else:
@@ -456,16 +469,16 @@ with tab1:
             else:
                 st.warning("⚠️ Vui lòng nhập mã barcode!")
     
-    # Show product form
-    if st.session_state.barcode and st.session_state.product:
+    # Show product form - QUAN TRỌNG: Phải nằm ngoài các điều kiện scan_mode
+    if st.session_state.barcode and st.session_state.product and not st.session_state.pending_confirm:
         st.markdown("---")
-        st.success(f"✅ **Mã:** {st.session_state.barcode}")
+        st.success(f"✅ **Mã vạch đã quét:** {st.session_state.barcode}")
         
         if st.session_state.product['name'] == 'Chưa có thông tin':
             st.warning("⚠️ **Sản phẩm chưa được thêm vào hệ thống**")
             st.info("💡 Vui lòng chuyển sang tab **'Thêm SP'** để thêm thông tin sản phẩm này")
             
-            if st.button("🔄 Quét lại", use_container_width=True):
+            if st.button("🔄 Quét lại", use_container_width=True, key="rescan_unknown"):
                 reset()
                 st.rerun()
         
