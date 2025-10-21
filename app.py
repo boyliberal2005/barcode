@@ -633,34 +633,24 @@ with tab2:
     if products_df.empty or len(products_df) == 0:
         st.warning("⚠️ Chưa có sản phẩm nào trong hệ thống. Vui lòng thêm sản phẩm ở tab 'Thêm SP'")
     else:
-        # Search method selector - Compact version
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            btn_search = st.button("🔍 Tìm kiếm", use_container_width=True, key="search_mode")
-        with col2:
-            btn_alphabet = st.button("🔤 Chữ cái", use_container_width=True, key="alphabet_mode")
-        with col3:
-            btn_all = st.button("📋 Tất cả", use_container_width=True, key="all_mode")
-        
-        # Determine search method from session state or button clicks
+        # Initialize search method in session state
         if 'warehouse_search_method' not in st.session_state:
             st.session_state.warehouse_search_method = "all"
         
-        if btn_search:
-            st.session_state.warehouse_search_method = "search"
-        elif btn_alphabet:
-            st.session_state.warehouse_search_method = "alphabet"
-        elif btn_all:
-            st.session_state.warehouse_search_method = "all"
-        
-        search_method = st.session_state.warehouse_search_method
+        # Search method selector using selectbox (simpler and more reliable)
+        search_method = st.selectbox(
+            "Chọn cách tìm kiếm:",
+            ["📋 Hiển thị tất cả", "🔍 Tìm kiếm", "🔤 Theo chữ cái"],
+            index=0,
+            key="warehouse_search_selector"
+        )
         
         st.markdown("---")
         
         filtered_products = products_df.copy()
         
         # Search mode
-        if search_method == "search":
+        if search_method == "🔍 Tìm kiếm":
             search_query = st.text_input(
                 "🔍 Tìm kiếm sản phẩm",
                 placeholder="Nhập tên sản phẩm hoặc barcode...",
@@ -676,27 +666,16 @@ with tab2:
                     products_df['Thương hiệu'].str.lower().str.contains(search_query, na=False)
                 ]
         
-        # Alphabet mode - MOBILE OPTIMIZED
-        elif search_method == "alphabet":
-            # CSS cho alphabet buttons - compact và mobile-friendly
-            st.markdown("""
-            <style>
-            div[data-testid="column"] button[kind="secondary"] {
-                padding: 0.4rem 0.2rem !important;
-                font-size: 0.9em !important;
-                min-height: 2.5rem !important;
-            }
-            </style>
-            """, unsafe_allow_html=True)
+        # Alphabet mode - MOBILE OPTIMIZED (3 rows only)
+        elif search_method == "🔤 Theo chữ cái":
+            st.markdown("**🔤 Chọn chữ cái đầu của tên sản phẩm:**")
             
-            st.markdown("**🔤 Chọn chữ cái đầu:**")
-            
-            # Create alphabet in 3 rows - MOBILE OPTIMIZED
+            # Create alphabet in 3 rows
             alphabet = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 
                        'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
                        'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0-9']
             
-            # Initialize selected letter in session state
+            # Initialize selected letter
             if 'selected_letter_warehouse' not in st.session_state:
                 st.session_state.selected_letter_warehouse = None
             
@@ -704,22 +683,25 @@ with tab2:
             cols1 = st.columns(9)
             for idx, letter in enumerate(alphabet[0:9]):
                 with cols1[idx]:
-                    if st.button(letter, key=f"letter_w_{letter}", use_container_width=True):
+                    if st.button(letter, key=f"wh_letter_{letter}", use_container_width=True):
                         st.session_state.selected_letter_warehouse = letter
+                        st.rerun()
             
             # Row 2: J-R (9 letters)
             cols2 = st.columns(9)
             for idx, letter in enumerate(alphabet[9:18]):
                 with cols2[idx]:
-                    if st.button(letter, key=f"letter_w_{letter}", use_container_width=True):
+                    if st.button(letter, key=f"wh_letter_{letter}", use_container_width=True):
                         st.session_state.selected_letter_warehouse = letter
+                        st.rerun()
             
             # Row 3: S-Z + 0-9 (10 letters)
             cols3 = st.columns(10)
-            for idx, letter in enumerate(alphabet[18:28]):
+            for idx, letter in enumerate(alphabet[18:]):
                 with cols3[idx]:
-                    if st.button(letter, key=f"letter_w_{letter}", use_container_width=True):
+                    if st.button(letter, key=f"wh_letter_{letter}", use_container_width=True):
                         st.session_state.selected_letter_warehouse = letter
+                        st.rerun()
             
             selected_letter = st.session_state.selected_letter_warehouse
             
@@ -734,6 +716,11 @@ with tab2:
                     filtered_products = products_df[
                         products_df['Tên SP'].str.upper().str.startswith(selected_letter, na=False)
                     ]
+                
+                # Reset button
+                if st.button("🔄 Xóa bộ lọc", key="clear_letter_filter"):
+                    st.session_state.selected_letter_warehouse = None
+                    st.rerun()
 
 # ===== TAB 3: DATA =====
 with tab3:
