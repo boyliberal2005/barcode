@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit as st  # Ensure this is the first line
 from PIL import Image
 import gspread
 from google.oauth2.service_account import Credentials
@@ -532,11 +532,14 @@ with tab1:
                         help="Nhập số lượng sản phẩm"
                     )
                 with col2:
-                    unit = st.selectbox(
+                    unit = st.multiselect(
                         "Đơn vị",
                         ["cái", "hộp", "chai", "kg", "g", "L", "ml"],
+                        max_selections=1,
+                        default=["cái"],
                         help="Chọn đơn vị tính"
                     )
+                    unit = unit[0] if unit else "cái"
                 st.markdown("---")
                 col1, col2 = st.columns(2)
                 with col1:
@@ -599,8 +602,8 @@ with tab2:
             # Fix: Use callback for reset to avoid state conflict
             def reset_alphabet_filter():
                 st.session_state.reset_alphabet = True
-                if "alphabet_select" in st.session_state:
-                    del st.session_state["alphabet_select"]
+                if "alphabet_multi" in st.session_state:
+                    del st.session_state["alphabet_multi"]
                 st.rerun()
 
             if st.button("🗑️ Xóa bộ lọc", use_container_width=True, key="clear_filter", on_click=reset_alphabet_filter):
@@ -609,15 +612,18 @@ with tab2:
             alphabet = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
                         'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0-9']
             # Initialize default value if not set
-            if "alphabet_select" not in st.session_state or st.session_state.reset_alphabet:
-                st.session_state["alphabet_select"] = "Tất cả"
+            if "alphabet_multi" not in st.session_state or st.session_state.reset_alphabet:
+                st.session_state["alphabet_multi"] = ["Tất cả"]
                 st.session_state.reset_alphabet = False  # Reset flag after use
-            selected_letter = st.selectbox(
+            selected_letter_list = st.multiselect(
                 "🔤 Chọn chữ cái đầu",
                 ["Tất cả"] + alphabet,
+                max_selections=1,
+                default=st.session_state["alphabet_multi"],
                 help="Chọn chữ cái để lọc sản phẩm",
-                key="alphabet_select"
+                key="alphabet_multi"
             )
+            selected_letter = selected_letter_list[0] if selected_letter_list else "Tất cả"
             if selected_letter != "Tất cả":
                 if selected_letter == '0-9':
                     filtered_products = products_df[
@@ -667,15 +673,16 @@ with tab2:
                         help="Nhập số lượng sản phẩm",
                         key="qty_input"
                     )
-                    # Fix: Ensure unit selectbox always has a visible default
-                    if "unit_select" not in st.session_state:
-                        st.session_state["unit_select"] = "cái"
-                    unit = st.selectbox(
+                    # Fix: Use multiselect as workaround for selectbox on mobile
+                    unit_list = st.multiselect(
                         "Đơn vị",
                         ["cái", "hộp", "chai", "kg", "g", "L", "ml"],
+                        max_selections=1,
+                        default=["cái"],
                         help="Chọn đơn vị tính",
-                        key="unit_select"
+                        key="unit_multi"
                     )
+                    unit = unit_list[0] if unit_list else "cái"
                     submit = st.form_submit_button("✅ Lưu nhập kho", type="primary", use_container_width=True)
                     if submit:
                         if qty > 0:
@@ -692,7 +699,7 @@ with tab2:
                                     st.success(f"✅ Đã nhập kho: **{product_info['Tên SP']}** - **{qty} {unit}**")
                                     st.balloons()
                                     # Reset all form-related states
-                                    for key in ["qty_input", "unit_select", "product_select"]:
+                                    for key in ["qty_input", "unit_multi", "product_select"]:
                                         if key in st.session_state:
                                             del st.session_state[key]
                                     st.rerun()
