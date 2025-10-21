@@ -633,16 +633,12 @@ with tab2:
     if products_df.empty or len(products_df) == 0:
         st.warning("⚠️ Chưa có sản phẩm nào trong hệ thống. Vui lòng thêm sản phẩm ở tab 'Thêm SP'")
     else:
-        # Initialize search method in session state
-        if 'warehouse_search_method' not in st.session_state:
-            st.session_state.warehouse_search_method = "all"
-        
-        # Search method selector using selectbox (simpler and more reliable)
-        search_method = st.selectbox(
+        # Search method selector
+        search_method = st.radio(
             "Chọn cách tìm kiếm:",
-            ["📋 Hiển thị tất cả", "🔍 Tìm kiếm", "🔤 Theo chữ cái"],
-            index=0,
-            key="warehouse_search_selector"
+            ["🔍 Tìm kiếm", "🔤 Chữ cái", "📋 Tất cả"],
+            horizontal=True,
+            label_visibility="collapsed"
         )
         
         st.markdown("---")
@@ -654,8 +650,7 @@ with tab2:
             search_query = st.text_input(
                 "🔍 Tìm kiếm sản phẩm",
                 placeholder="Nhập tên sản phẩm hoặc barcode...",
-                help="Gõ tên hoặc mã barcode để tìm",
-                key="warehouse_search_input"
+                help="Gõ tên hoặc mã barcode để tìm"
             )
             
             if search_query:
@@ -666,61 +661,116 @@ with tab2:
                     products_df['Thương hiệu'].str.lower().str.contains(search_query, na=False)
                 ]
         
-        # Alphabet mode - MOBILE OPTIMIZED (3 rows only)
-        elif search_method == "🔤 Theo chữ cái":
-            st.markdown("**🔤 Chọn chữ cái đầu của tên sản phẩm:**")
+        # Alphabet mode
+        elif search_method == "🔤 Chữ cái":
+            st.markdown("**Chọn chữ cái đầu:**")
             
-            # Create alphabet in 3 rows
-            alphabet = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 
-                       'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
-                       'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0-9']
+            # Create alphabet buttons
+            alphabet = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 
+                       'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0-9']
             
-            # Initialize selected letter
-            if 'selected_letter_warehouse' not in st.session_state:
-                st.session_state.selected_letter_warehouse = None
+            cols = st.columns(7)
+            selected_letter = None
             
-            # Row 1: A-I (9 letters)
-            cols1 = st.columns(9)
-            for idx, letter in enumerate(alphabet[0:9]):
-                with cols1[idx]:
-                    if st.button(letter, key=f"wh_letter_{letter}", use_container_width=True):
-                        st.session_state.selected_letter_warehouse = letter
-                        st.rerun()
-            
-            # Row 2: J-R (9 letters)
-            cols2 = st.columns(9)
-            for idx, letter in enumerate(alphabet[9:18]):
-                with cols2[idx]:
-                    if st.button(letter, key=f"wh_letter_{letter}", use_container_width=True):
-                        st.session_state.selected_letter_warehouse = letter
-                        st.rerun()
-            
-            # Row 3: S-Z + 0-9 (10 letters)
-            cols3 = st.columns(10)
-            for idx, letter in enumerate(alphabet[18:]):
-                with cols3[idx]:
-                    if st.button(letter, key=f"wh_letter_{letter}", use_container_width=True):
-                        st.session_state.selected_letter_warehouse = letter
-                        st.rerun()
-            
-            selected_letter = st.session_state.selected_letter_warehouse
+            for idx, letter in enumerate(alphabet):
+                col_idx = idx % 7
+                with cols[col_idx]:
+                    if st.button(letter, key=f"letter_{letter}", use_container_width=True):
+                        selected_letter = letter
             
             if selected_letter:
                 st.info(f"📝 Hiển thị sản phẩm bắt đầu bằng: **{selected_letter}**")
                 
                 if selected_letter == '0-9':
+                    # Filter products starting with numbers
                     filtered_products = products_df[
                         products_df['Tên SP'].str[0].str.match(r'^\d', na=False)
                     ]
                 else:
+                    # Filter products starting with selected letter
                     filtered_products = products_df[
                         products_df['Tên SP'].str.upper().str.startswith(selected_letter, na=False)
                     ]
+        
+        # Display results
+        st.markdown("---")
+        
+        if filtered_products.empty:
+            st.info("📭 Không tìm thấy sản phẩm nào")
+        else:
+            st.success(f"✅ Tìm thấy **{len(filtered_products)}** sản phẩm")
+            
+            # Product selector
+            product_options = filtered_products.apply(
+                lambda x: f"{x['Tên SP']} - {x['Thương hiệu']} ({x['Barcode']})", axis=1
+            ).tolist()
+            
+            selected_product = st.selectbox(
+                "📦 Chọn sản phẩm:",
+                options=product_options,
+                help="Chọn sản phẩm để nhập kho"
+            )
+            
+            if selected_product:
+                # Extract barcode from selection
+                selected_barcode = selected_product.split('(')[-1].rstrip(')')
+                product_info = filtered_products[filtered_products['Barcode'] == selected_barcode].iloc[0]
                 
-                # Reset button
-                if st.button("🔄 Xóa bộ lọc", key="clear_letter_filter"):
-                    st.session_state.selected_letter_warehouse = None
-                    st.rerun()
+                # Display product info
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("📦 Tên sản phẩm", product_info['Tên SP'])
+                with col2:
+                    st.metric("🏷️ Thương hiệu", product_info['Thương hiệu'])
+                
+                st.info(f"📊 Barcode: **{product_info['Barcode']}**")
+                
+                st.markdown("---")
+                
+                # Input form
+                with st.form("warehouse_input_form", clear_on_submit=True):
+                    st.subheader("📝 Nhập thông tin nhập kho")
+                    
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        qty = st.number_input(
+                            "Số lượng",
+                            min_value=0.0,
+                            step=0.1,
+                            format="%.2f",
+                            value=1.0,
+                            help="Nhập số lượng sản phẩm"
+                        )
+                    with col2:
+                        unit = st.selectbox(
+                            "Đơn vị",
+                            ["cái", "hộp", "chai", "kg", "g", "L", "ml"],
+                            help="Chọn đơn vị tính"
+                        )
+                    
+                    st.markdown("---")
+                    
+                    submit = st.form_submit_button("✅ Xác nhận & Lưu", type="primary", use_container_width=True)
+                    
+                    if submit:
+                        if qty > 0:
+                            data = {
+                                'barcode': product_info['Barcode'],
+                                'name': product_info['Tên SP'],
+                                'brand': product_info['Thương hiệu'],
+                                'qty': qty,
+                                'unit': unit,
+                                'time': datetime.now(VN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+                            }
+                            
+                            with st.spinner("⏳ Đang lưu dữ liệu..."):
+                                if save_scan(data):
+                                    st.success(f"✅ Đã nhập kho: **{product_info['Tên SP']}** - Số lượng: **{qty} {unit}**")
+                                    st.balloons()
+                                else:
+                                    st.error("❌ Không thể lưu. Vui lòng thử lại!")
+                        else:
+                            st.warning("⚠️ Số lượng phải lớn hơn 0!")
 
 # ===== TAB 3: DATA =====
 with tab3:
