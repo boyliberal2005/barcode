@@ -313,7 +313,51 @@ with tab1:
     
     # Camera mode
     if scan_mode == "📷 Camera":
-        cam = st.camera_input("📸 Chụp ảnh barcode", label_visibility="collapsed")
+        # Hướng dẫn chi tiết
+        st.info("""
+        📸 **Hướng dẫn chụp barcode tốt nhất:**
+        - 📏 Giữ điện thoại **cách barcode 15-20cm** (bằng chiều dài ngón tay cái đến cổ tay)
+        - 💡 Đảm bảo có **đủ ánh sáng**, tránh bóng tối
+        - 📐 Giữ điện thoại **song song** với barcode
+        - 🎯 Đưa barcode vào **giữa khung hình**
+        - ⏱️ Đứng yên 1-2 giây trước khi chụp để ảnh sắc nét
+        """)
+        
+        # Custom CSS cho camera lớn hơn trên mobile
+        st.markdown("""
+        <style>
+        /* Tăng kích thước camera trên mobile */
+        [data-testid="stCameraInput"] {
+            width: 100% !important;
+        }
+        [data-testid="stCameraInput"] video {
+            width: 100% !important;
+            height: 60vh !important;
+            max-height: 500px !important;
+            object-fit: cover !important;
+            border-radius: 16px !important;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2) !important;
+        }
+        /* Image preview cũng lớn */
+        [data-testid="stCameraInput"] img {
+            width: 100% !important;
+            height: auto !important;
+            max-height: 500px !important;
+            object-fit: contain !important;
+            border-radius: 16px !important;
+        }
+        /* Nút chụp lớn hơn */
+        [data-testid="stCameraInput"] button {
+            height: 60px !important;
+            width: 60px !important;
+            border-radius: 50% !important;
+            background: #4CAF50 !important;
+            border: 4px solid white !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        cam = st.camera_input("📸 Nhấn để chụp", label_visibility="visible", key="camera_input")
         
         if cam:
             h = hash(cam.getvalue())
@@ -322,16 +366,32 @@ with tab1:
                 st.session_state.img_hash = h
                 img = Image.open(cam)
                 
-                with st.spinner("🤖 AI đang quét..."):
-                    barcode = scan_gemini(img)
-                    
-                    if barcode:
-                        st.session_state.barcode = barcode
-                        st.session_state.product = lookup(barcode, products_df)
-                        st.session_state.scanned = True
+                # Hiển thị ảnh vừa chụp lớn để kiểm tra
+                st.image(img, caption="✅ Ảnh đã chụp - Kiểm tra xem barcode có rõ không?", use_container_width=True)
+                
+                # Cho user xác nhận ảnh có rõ không
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("✅ Rõ ràng - Quét ngay", use_container_width=True, type="primary"):
+                        with st.spinner("🤖 AI đang quét barcode..."):
+                            barcode = scan_gemini(img)
+                            
+                            if barcode:
+                                st.session_state.barcode = barcode
+                                st.session_state.product = lookup(barcode, products_df)
+                                st.session_state.scanned = True
+                                st.rerun()
+                            else:
+                                st.error("❌ Không tìm thấy barcode. Vui lòng chụp lại!")
+                                st.session_state.img_hash = None
+                
+                with col2:
+                    if st.button("🔄 Mờ - Chụp lại", use_container_width=True):
+                        st.session_state.img_hash = None
                         st.rerun()
-                    else:
-                        st.error("❌ Không tìm thấy barcode. Vui lòng chụp lại!")
+        else:
+            # Hiển thị tips khi chưa chụp
+            st.warning("⚠️ **Lưu ý:** Nếu ảnh bị mờ, hãy di chuyển điện thoại ra xa barcode một chút (khoảng 15-20cm)")
     
     # Upload mode
     elif scan_mode == "📁 Upload":
@@ -559,7 +619,8 @@ st.markdown("---")
 st.markdown(
     """
     <div style='text-align: center; color: rgba(255,255,255,0.7); padding: 1rem;'>
-        <p style='margin: 0;'>🌟 <strong>Viva Star Coffee - 34B Đường Số 2, Lu Gia</strong> - Hệ thống kiểm hàng thông minh</p>
+        <p style='margin: 0;'>🌟 <strong>Viva Star Coffee</strong> - Hệ thống kiểm hàng thông minh</p>
+        <p style='margin: 0; font-size: 0.9em;'>© 2025 - Powered by AI Technology</p>
     </div>
     """,
     unsafe_allow_html=True
