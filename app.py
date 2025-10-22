@@ -686,4 +686,4 @@ with tab2:
                             st.rerun()
             
             if selected_letter and selected_letter != '✖️':
-                st.info(f"📝 Hiển thị sản phẩm bắt đầu bằng: **{selected_letter}**"
+                st.info(f"📝 Hiển thị sản phẩm bắt đầu bằng: **{selected_letter}**")
